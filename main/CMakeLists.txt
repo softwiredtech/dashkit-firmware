@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "led.c"
+        "mcp251xfd.c"
+        "can_manager.c"
+        "ble_server.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+        esp_adc
+        nvs_flash
+        bt
+        esp_timer
+)
