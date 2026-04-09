@@ -174,9 +174,10 @@ static uint8_t dlc_to_len(uint8_t dlc)
 static esp_err_t wait_for_osc(mcp251xfd_ctx_t *ctx)
 {
     for (int i = 0; i < 100; i++) {
-        uint32_t osc;
-        read_reg32(ctx, REG_OSC, &osc);
-        if ((osc & OSC_OSCRDY) && (osc & OSC_SCLKRDY)) {
+        uint32_t osc = 0;
+        esp_err_t err = read_reg32(ctx, REG_OSC, &osc);
+        ESP_LOGI(TAG, "OSC reg: 0x%08lx (err=%d)", (unsigned long)osc, err);
+        if (osc & OSC_OSCRDY) {
             return ESP_OK;
         }
         vTaskDelay(pdMS_TO_TICKS(10));

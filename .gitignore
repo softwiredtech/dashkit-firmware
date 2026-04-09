@@ -4,4 +4,5 @@ sdkconfig.old
 managed_components/
 dependencies.lock
 .idea/
+.cache
 CLAUDE.md
