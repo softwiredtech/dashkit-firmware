@@ -42,6 +42,20 @@ idf.py flash monitor
 
 Press `Ctrl+]` to exit the serial monitor.
 
+## Debug Logging
+
+To enable verbose CAN frame and status logging, add to `sdkconfig.defaults`:
+
+```
+CONFIG_DASHKIT_DEBUG_LOG=y
+```
+
+Then rebuild:
+
+```bash
+idf.py fullclean && idf.py build
+```
+
 ## Hardware
 
 | Function | GPIO |

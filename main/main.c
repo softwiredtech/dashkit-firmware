@@ -79,6 +79,20 @@ static void can_to_ble_task(void *arg)
                 }
             }
 
+#ifdef CONFIG_DASHKIT_DEBUG_LOG
+            // Log frames to serial
+            for (int i = 0; i < count; i++) {
+                const can_tagged_frame_t *f = &batch[i];
+                uint8_t len = f->frame.dlc > 8 ? 8 : f->frame.dlc;
+                char hex[8 * 3 + 1] = {0};
+                for (int j = 0; j < len; j++) {
+                    sprintf(hex + j * 3, "%02X ", f->frame.data[j]);
+                }
+                ESP_LOGI(TAG, "CAN%d 0x%03lX [%d] %s",
+                         f->bus_id, (unsigned long)f->frame.id, len, hex);
+            }
+#endif
+
             // Send over BLE if connected
             if (ble_server_is_connected()) {
                 size_t pkt_len = build_ble_packet(batch, count, ble_buf, sizeof(ble_buf));
