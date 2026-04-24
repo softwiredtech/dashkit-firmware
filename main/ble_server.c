@@ -11,7 +11,7 @@
 
 static const char *TAG = "ble";
 
-#define DEVICE_NAME "PandaCAN"
+#define DEVICE_NAME "DashKit"
 
 // DashPilot BLE UUIDs
 // Service:        CADA0000-CA00-B1E0-B0D6-C000AA0100A1
