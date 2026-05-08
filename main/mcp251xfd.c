@@ -590,7 +590,11 @@ static esp_err_t iface_start(can_interface_t *self)
         .intr_type = GPIO_INTR_NEGEDGE,  // INT is active low
     };
     gpio_config(&io_conf);
-    gpio_install_isr_service(0);
+    // ESP_ERR_INVALID_STATE = service already installed by an earlier interface; that's fine.
+    esp_err_t isr_err = gpio_install_isr_service(0);
+    if (isr_err != ESP_OK && isr_err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "gpio_install_isr_service failed: %s", esp_err_to_name(isr_err));
+    }
     gpio_isr_handler_add(ctx->pin_int, gpio_isr_handler, ctx);
 
     // Create RX task
@@ -728,7 +732,9 @@ can_interface_t *mcp251xfd_create(const mcp251xfd_config_t *config)
     };
 
     esp_err_t err = spi_bus_initialize(config->spi_host, &bus_cfg, SPI_DMA_CH_AUTO);
-    if (err != ESP_OK) {
+    // ESP_ERR_INVALID_STATE = bus already initialized by an earlier device on the same host.
+    // Sharing the SPI bus across multiple MCP2518FDs (different CS) is supported.
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "SPI bus init failed: %s", esp_err_to_name(err));
         free(ctx);
         free(iface);

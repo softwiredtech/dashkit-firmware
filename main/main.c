@@ -145,6 +145,28 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(can_manager_add_interface(can0));
 
+    // CAN interface 1 (MCP2518FD, shares SPI2 bus with CAN0)
+    mcp251xfd_config_t can1_cfg = {
+        .spi_host     = CAN1_SPI_HOST,
+        .pin_mosi     = CAN1_PIN_MOSI,
+        .pin_sclk     = CAN1_PIN_SCLK,
+        .pin_miso     = CAN1_PIN_MISO,
+        .pin_cs       = CAN1_PIN_CS,
+        .pin_int      = CAN1_PIN_INT,
+        .spi_clock_hz = CAN1_SPI_CLOCK_HZ,
+        .osc_freq_hz  = CAN1_OSC_FREQ_HZ,
+        .bitrate      = 500000,
+        .bitrate_data = 0,
+        .bus_id       = 2,
+    };
+    can_interface_t *can1 = mcp251xfd_create(&can1_cfg);
+    if (!can1) {
+        ESP_LOGE(TAG, "Failed to create CAN1 interface");
+        led_set_color(LED_COLOR_RED);
+        return;
+    }
+    ESP_ERROR_CHECK(can_manager_add_interface(can1));
+
     // Start CAN
     err = can_manager_start();
     if (err != ESP_OK) {
