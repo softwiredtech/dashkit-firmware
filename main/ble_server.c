@@ -233,6 +233,11 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
         return ESP_ERR_INVALID_STATE;
     }
 
+    // Pause CAN notifications during OTA to avoid BLE congestion
+    if (ble_ota_is_in_progress()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
     if (!om) {
         return ESP_ERR_NO_MEM;

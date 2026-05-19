@@ -161,8 +161,6 @@ static bool handle_begin(const uint8_t *data, uint16_t len)
     ESP_LOGI(TAG, "OTA started: %lu bytes, partition '%s'",
              (unsigned long)s_fw_size, s_update_partition->label);
 
-    // Send initial progress (0 bytes)
-    send_progress();
     return true;
 }
 
@@ -338,7 +336,7 @@ static const struct ble_gatt_svc_def s_ota_svc_def[] = {
                 .flags = BLE_GATT_CHR_F_WRITE,
             },
             {
-                // Data: Write With Response (flow control for reliable OTA)
+                // Data: Write With Response (reliable delivery)
                 .uuid = &s_ota_data_uuid.u,
                 .access_cb = ota_data_access,
                 .flags = BLE_GATT_CHR_F_WRITE,
@@ -377,4 +375,9 @@ void ble_ota_on_disconnect(void)
         ESP_LOGW(TAG, "BLE disconnected during OTA, aborting");
         ota_cleanup();
     }
+}
+
+bool ble_ota_is_in_progress(void)
+{
+    return s_ota_in_progress;
 }

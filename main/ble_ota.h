@@ -17,3 +17,6 @@ esp_err_t ble_ota_init(void);
 
 // Abort any in-progress OTA transfer. Called on BLE disconnect.
 void ble_ota_on_disconnect(void);
+
+// Check if OTA transfer is currently in progress.
+bool ble_ota_is_in_progress(void);
