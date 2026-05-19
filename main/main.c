@@ -4,6 +4,7 @@
 #include "can_manager.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
+#include "ble_ota.h"
 
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -177,6 +178,7 @@ void app_main(void)
 
     // BLE
     ESP_ERROR_CHECK(ble_server_init());
+    ESP_ERROR_CHECK(ble_ota_init());
     ESP_ERROR_CHECK(ble_server_start());
 
     // Bridge task: CAN -> BLE

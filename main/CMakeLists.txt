@@ -5,6 +5,7 @@ idf_component_register(
         "mcp251xfd.c"
         "can_manager.c"
         "ble_server.c"
+        "ble_ota.c"
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -13,4 +14,5 @@ idf_component_register(
         nvs_flash
         bt
         esp_timer
+        app_update
 )

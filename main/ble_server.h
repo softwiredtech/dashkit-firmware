@@ -17,3 +17,6 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len);
 
 // Check if a client is connected and subscribed to notifications
 bool ble_server_is_connected(void);
+
+// Get the current BLE connection handle (BLE_HS_CONN_HANDLE_NONE if not connected)
+uint16_t ble_server_get_conn_handle(void);
