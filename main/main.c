@@ -184,6 +184,13 @@ void app_main(void)
     // Bridge task: CAN -> BLE
     xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 4096, NULL, 5, NULL, 0);
 
-    led_set_color(LED_COLOR_GREEN);  // Green = running
     ESP_LOGI(TAG, "DashKit firmware ready");
+
+    // Blink green LED once per second to indicate running
+    //while (true) {
+    led_set_color(LED_COLOR_GREEN);
+    //    vTaskDelay(pdMS_TO_TICKS(500));
+    //    led_set_color(LED_COLOR_OFF);
+    //    vTaskDelay(pdMS_TO_TICKS(500));
+    //}
 }

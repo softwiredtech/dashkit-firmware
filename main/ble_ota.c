@@ -112,12 +112,13 @@ static void reboot_timer_cb(void *arg)
 // ---------------------------------------------------------------------------
 // OTA command handling
 // ---------------------------------------------------------------------------
-static void handle_begin(const uint8_t *data, uint16_t len)
+// Returns true on success, false on failure (ATT error should be returned)
+static bool handle_begin(const uint8_t *data, uint16_t len)
 {
     if (len < 5) {
         ESP_LOGE(TAG, "Begin command too short");
         send_error(0x01);
-        return;
+        return false;
     }
 
     if (s_ota_in_progress) {
@@ -129,28 +130,28 @@ static void handle_begin(const uint8_t *data, uint16_t len)
     if (s_fw_size == 0) {
         ESP_LOGE(TAG, "Invalid firmware size: 0");
         send_error(0x02);
-        return;
+        return false;
     }
 
     s_update_partition = esp_ota_get_next_update_partition(NULL);
     if (!s_update_partition) {
         ESP_LOGE(TAG, "No OTA partition available");
         send_error(0x03);
-        return;
+        return false;
     }
 
     if (s_fw_size > s_update_partition->size) {
         ESP_LOGE(TAG, "Firmware too large: %lu > %lu",
                  (unsigned long)s_fw_size, (unsigned long)s_update_partition->size);
         send_error(0x04);
-        return;
+        return false;
     }
 
     esp_err_t err = esp_ota_begin(s_update_partition, s_fw_size, &s_ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
         send_error(0x05);
-        return;
+        return false;
     }
 
     s_received = 0;
@@ -162,6 +163,7 @@ static void handle_begin(const uint8_t *data, uint16_t len)
 
     // Send initial progress (0 bytes)
     send_progress();
+    return true;
 }
 
 static void handle_abort(void)
@@ -264,7 +266,9 @@ static int ota_ctrl_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (buf[0]) {
     case OTA_CMD_BEGIN:
-        handle_begin(buf, copy_len);
+        if (!handle_begin(buf, copy_len)) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
         break;
     case OTA_CMD_ABORT:
         handle_abort();
@@ -334,10 +338,10 @@ static const struct ble_gatt_svc_def s_ota_svc_def[] = {
                 .flags = BLE_GATT_CHR_F_WRITE,
             },
             {
-                // Data: Write No Response
+                // Data: Write With Response (flow control for reliable OTA)
                 .uuid = &s_ota_data_uuid.u,
                 .access_cb = ota_data_access,
-                .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
+                .flags = BLE_GATT_CHR_F_WRITE,
             },
             {
                 // Status: Notify + Read
