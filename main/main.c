@@ -20,7 +20,7 @@ static const char *TAG = "main";
 #define BLE_BATCH_TIMEOUT_MS  5
 
 // Build a DashPilot-compatible BLE packet from CAN frames.
-// Format: [count][bus, addr_LE32, len, data...]...
+// Format: [count][timestamp_us_LE32, bus, addr_LE32, len, data...]...
 static size_t build_ble_packet(const can_tagged_frame_t *frames, int count, uint8_t *buf, size_t buf_size)
 {
     size_t pos = 0;
@@ -34,11 +34,18 @@ static size_t build_ble_packet(const can_tagged_frame_t *frames, int count, uint
         uint8_t data_len = f->frame.dlc;
         if (data_len > 8) data_len = 8;  // DashPilot expects classic CAN (max 8)
 
-        // Check we have room: bus(1) + addr(4) + len(1) + data(n)
-        if (pos + 6 + data_len > buf_size) {
+        // Check we have room: timestamp(4) + bus(1) + addr(4) + len(1) + data(n)
+        if (pos + 10 + data_len > buf_size) {
             buf[0] = (uint8_t)i;  // Adjust count to what we actually packed
             break;
         }
+
+        // Timestamp in little-endian 32-bit (microseconds since boot)
+        uint32_t ts = f->timestamp_us;
+        buf[pos++] = (ts >>  0) & 0xFF;
+        buf[pos++] = (ts >>  8) & 0xFF;
+        buf[pos++] = (ts >> 16) & 0xFF;
+        buf[pos++] = (ts >> 24) & 0xFF;
 
         buf[pos++] = f->bus_id;
 
@@ -56,6 +63,40 @@ static size_t build_ble_packet(const can_tagged_frame_t *frames, int count, uint
 
     return pos;
 }
+
+#ifdef DASHKIT_SIM_MODE
+// Simulator task: replays DI_vehicleEstimates (0x267) with cycling counter
+static void can_sim_task(void *arg)
+{
+    (void)arg;
+    uint8_t counter = 0;
+
+    ESP_LOGI(TAG, "CAN simulator started (DI_vehicleEstimates 0x267)");
+
+    while (true) {
+        can_tagged_frame_t f = {0};
+        f.bus_id = 1;
+        f.frame.id = 0x267;
+        f.frame.dlc = 8;
+
+        // DI_mass: bits [9:0], value=20 -> (20*5)+1900 = 2000 kg
+        // Byte 0 = bits [7:0] of mass = 20 & 0xFF = 0x14
+        // Byte 1 bits [1:0] = bits [9:8] of mass = 0
+        f.frame.data[0] = 0x14;
+        f.frame.data[1] = 0x00;
+
+        // DI_vehicleEstimatesCounter: start bit 13, length 3, little-endian
+        // Bit 13 in byte-level: byte 1, bit 5 (13 / 8 = 1, 13 % 8 = 5)
+        // 3 bits at [15:13] = byte 1 bits [7:5]
+        f.frame.data[1] |= (counter & 0x07) << 5;
+
+        can_manager_inject(&f);
+
+        counter = (counter + 1) & 0x07;
+        vTaskDelay(pdMS_TO_TICKS(100));  // 10 Hz
+    }
+}
+#endif
 
 // Task that bridges CAN frames to BLE notifications
 static void can_to_ble_task(void *arg)
@@ -183,6 +224,11 @@ void app_main(void)
 
     // Bridge task: CAN -> BLE
     xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 4096, NULL, 5, NULL, 0);
+
+#ifdef DASHKIT_SIM_MODE
+    // Simulator task: generates fake CAN frames
+    xTaskCreatePinnedToCore(can_sim_task, "can_sim", 4096, NULL, 4, NULL, 0);
+#endif
 
     ESP_LOGI(TAG, "DashKit firmware ready");
 

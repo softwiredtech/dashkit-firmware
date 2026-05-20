@@ -1,5 +1,8 @@
 #pragma once
 
+// Uncomment to enable CAN simulator mode (no real CAN hardware needed)
+// #define DASHKIT_SIM_MODE
+
 // --- SPI: CAN Interface 0 (MCP2518FDT) ---
 #define CAN0_SPI_HOST       SPI2_HOST
 #define CAN0_PIN_MOSI       GPIO_NUM_11

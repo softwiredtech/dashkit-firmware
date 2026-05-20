@@ -1,5 +1,6 @@
 #include "can_manager.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
@@ -16,8 +17,10 @@ static void on_frame_received(const can_tagged_frame_t *frame, void *user_ctx)
 {
     (void)user_ctx;
     if (s_rx_queue) {
+        can_tagged_frame_t stamped = *frame;
+        stamped.timestamp_us = (uint32_t)esp_timer_get_time();
         // Drop frame if queue is full rather than blocking the driver
-        xQueueSend(s_rx_queue, frame, 0);
+        xQueueSend(s_rx_queue, &stamped, 0);
     }
 }
 
@@ -75,4 +78,15 @@ esp_err_t can_manager_receive(can_tagged_frame_t *frame, uint32_t timeout_ms)
         return ESP_OK;
     }
     return ESP_ERR_TIMEOUT;
+}
+
+esp_err_t can_manager_inject(const can_tagged_frame_t *frame)
+{
+    if (!s_rx_queue) return ESP_ERR_INVALID_STATE;
+    can_tagged_frame_t stamped = *frame;
+    stamped.timestamp_us = (uint32_t)esp_timer_get_time();
+    if (xQueueSend(s_rx_queue, &stamped, 0) == pdTRUE) {
+        return ESP_OK;
+    }
+    return ESP_ERR_NO_MEM;
 }

@@ -15,10 +15,11 @@ typedef struct {
     bool     brs;          // true = bit rate switch (CAN FD)
 } can_frame_t;
 
-// Frame tagged with the bus it was received on
+// Frame tagged with the bus it was received on and a timestamp
 typedef struct {
     can_frame_t frame;
     uint8_t     bus_id;
+    uint32_t    timestamp_us;  // Microseconds since boot (lower 32 bits)
 } can_tagged_frame_t;
 
 // Callback for received frames
