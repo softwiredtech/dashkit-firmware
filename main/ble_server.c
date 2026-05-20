@@ -47,6 +47,11 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             // Request higher MTU for larger CAN frame batches
             ble_att_set_preferred_mtu(512);
             ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
+            // Request 2M PHY for higher throughput
+            ble_gap_set_prefered_le_phy(s_conn_handle,
+                                        BLE_GAP_LE_PHY_2M_MASK,
+                                        BLE_GAP_LE_PHY_2M_MASK,
+                                        BLE_GAP_LE_PHY_CODED_ANY);
         } else {
             ESP_LOGW(TAG, "Connection failed, status=%d", event->connect.status);
             start_advertising();
@@ -75,6 +80,15 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_ADV_COMPLETE:
         start_advertising();
         break;
+
+    case BLE_GAP_EVENT_PHY_UPDATE_COMPLETE: {
+        uint8_t tx_phy = 0, rx_phy = 0;
+        ble_gap_read_le_phy(event->phy_updated.conn_handle, &tx_phy, &rx_phy);
+        ESP_LOGI(TAG, "PHY updated: TX=%sM, RX=%sM",
+                 tx_phy == BLE_GAP_LE_PHY_2M ? "2" : "1",
+                 rx_phy == BLE_GAP_LE_PHY_2M ? "2" : "1");
+        break;
+    }
 
     default:
         break;
