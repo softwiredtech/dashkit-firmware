@@ -1,4 +1,5 @@
 #include "ble_server.h"
+#include "ble_ota.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -56,6 +57,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "Disconnected (reason=0x%x)", event->disconnect.reason);
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_notifications_enabled = false;
+        ble_ota_on_disconnect();
         start_advertising();
         break;
 
@@ -127,7 +129,8 @@ static int gatt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 // ---------------------------------------------------------------------------
 // GATT service definition
 // ---------------------------------------------------------------------------
-static const struct ble_gatt_svc_def s_gatt_svcs[] = {
+// CAN service only — OTA service is added dynamically in ble_server_init
+static const struct ble_gatt_svc_def s_can_svc_def[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &s_svc_uuid.u,
@@ -143,6 +146,9 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
     },
     { 0 },  // Terminator
 };
+
+// Combined GATT services: CAN + OTA + terminator
+static struct ble_gatt_svc_def s_gatt_svcs[3];
 
 // ---------------------------------------------------------------------------
 // NimBLE host sync callback
@@ -186,6 +192,12 @@ esp_err_t ble_server_init(void)
     ble_hs_cfg.sm_bonding = 0;
     ble_hs_cfg.sm_sc = 0;
 
+    // Build combined GATT service table: CAN + OTA
+    const struct ble_gatt_svc_def *ota_svc = ble_ota_get_service_def();
+    s_gatt_svcs[0] = s_can_svc_def[0];  // CAN service
+    s_gatt_svcs[1] = ota_svc[0];        // OTA service
+    memset(&s_gatt_svcs[2], 0, sizeof(s_gatt_svcs[2]));  // Terminator
+
     // Register GATT services
     ble_svc_gap_init();
     ble_svc_gatt_init();
@@ -221,6 +233,11 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
         return ESP_ERR_INVALID_STATE;
     }
 
+    // Pause CAN notifications during OTA to avoid BLE congestion
+    if (ble_ota_is_in_progress()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
     if (!om) {
         return ESP_ERR_NO_MEM;
@@ -238,4 +255,9 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
 bool ble_server_is_connected(void)
 {
     return s_conn_handle != BLE_HS_CONN_HANDLE_NONE && s_notifications_enabled;
+}
+
+uint16_t ble_server_get_conn_handle(void)
+{
+    return s_conn_handle;
 }
