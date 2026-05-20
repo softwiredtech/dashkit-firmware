@@ -19,3 +19,6 @@ esp_err_t can_manager_stop(void);
 
 // Get the next received frame (blocks up to timeout_ms). Returns ESP_ERR_TIMEOUT if none.
 esp_err_t can_manager_receive(can_tagged_frame_t *frame, uint32_t timeout_ms);
+
+// Inject a frame into the RX queue (for simulator use). Timestamps automatically.
+esp_err_t can_manager_inject(const can_tagged_frame_t *frame);
