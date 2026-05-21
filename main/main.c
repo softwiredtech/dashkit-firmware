@@ -177,7 +177,7 @@ void app_main(void)
         .osc_freq_hz  = CAN0_OSC_FREQ_HZ,
         .bitrate      = 500000,
         .bitrate_data = 0,
-        .bus_id       = 1,
+        .bus_id       = 0,
     };
     can_interface_t *can0 = mcp251xfd_create(&can0_cfg);
     if (!can0) {
@@ -199,7 +199,7 @@ void app_main(void)
         .osc_freq_hz  = CAN1_OSC_FREQ_HZ,
         .bitrate      = 500000,
         .bitrate_data = 0,
-        .bus_id       = 2,
+        .bus_id       = 1,
     };
     can_interface_t *can1 = mcp251xfd_create(&can1_cfg);
     if (!can1) {
