@@ -20,3 +20,8 @@ bool ble_server_is_connected(void);
 
 // Get the current BLE connection handle (BLE_HS_CONN_HANDLE_NONE if not connected)
 uint16_t ble_server_get_conn_handle(void);
+
+// Enter pairing mode for `duration_sec` seconds.
+// During this window, new devices can bond. The green LED blinks to indicate
+// pairing mode. After the window expires, pairing requests are rejected.
+void ble_server_enter_pairing_mode(uint32_t duration_sec);

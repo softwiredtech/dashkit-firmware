@@ -1,5 +1,6 @@
 #include "ble_server.h"
 #include "ble_ota.h"
+#include "led.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -8,6 +9,9 @@
 #include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "store/config/ble_store_config.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
 #include <string.h>
 
 static const char *TAG = "ble";
@@ -31,6 +35,30 @@ static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t s_chr_val_handle;
 static bool     s_notifications_enabled = false;
 
+// Pairing window state
+static bool           s_pairing_allowed = false;
+static TimerHandle_t  s_pairing_timer = NULL;
+static TimerHandle_t  s_blink_timer = NULL;
+static bool           s_blink_on = false;
+
+static void pairing_timer_cb(TimerHandle_t timer)
+{
+    (void)timer;
+    s_pairing_allowed = false;
+    if (s_blink_timer) {
+        xTimerStop(s_blink_timer, 0);
+    }
+    led_set_color(LED_COLOR_GREEN);  // Restore solid green
+    ESP_LOGI(TAG, "Pairing window closed");
+}
+
+static void blink_timer_cb(TimerHandle_t timer)
+{
+    (void)timer;
+    s_blink_on = !s_blink_on;
+    led_set_color(s_blink_on ? LED_COLOR_GREEN : LED_COLOR_OFF);
+}
+
 // ---------------------------------------------------------------------------
 // GAP event handling
 // ---------------------------------------------------------------------------
@@ -44,6 +72,18 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         if (event->connect.status == 0) {
             s_conn_handle = event->connect.conn_handle;
             ESP_LOGI(TAG, "Connected (handle=%d)", s_conn_handle);
+
+            // Check if this peer is already bonded
+            struct ble_gap_conn_desc desc;
+            ble_gap_conn_find(s_conn_handle, &desc);
+            bool bonded = desc.sec_state.bonded;
+
+            if (!bonded && !s_pairing_allowed) {
+                ESP_LOGW(TAG, "Rejecting unbonded peer (pairing window closed)");
+                ble_gap_terminate(s_conn_handle, BLE_ERR_AUTH_FAIL);
+                break;
+            }
+
             // Request higher MTU for larger CAN frame batches
             ble_att_set_preferred_mtu(512);
             ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
@@ -52,6 +92,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
                                         BLE_GAP_LE_PHY_2M_MASK,
                                         BLE_GAP_LE_PHY_2M_MASK,
                                         BLE_GAP_LE_PHY_CODED_ANY);
+            // Initiate security (triggers pairing for new peers, encryption for bonded)
+            ble_gap_security_initiate(s_conn_handle);
         } else {
             ESP_LOGW(TAG, "Connection failed, status=%d", event->connect.status);
             start_advertising();
@@ -76,6 +118,27 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             ESP_LOGI(TAG, "Notifications %s", s_notifications_enabled ? "enabled" : "disabled");
         }
         break;
+
+    case BLE_GAP_EVENT_ENC_CHANGE:
+        if (event->enc_change.status == 0) {
+            ESP_LOGI(TAG, "Encryption enabled (handle=%d)", event->enc_change.conn_handle);
+        } else {
+            ESP_LOGW(TAG, "Encryption failed: status=%d", event->enc_change.status);
+        }
+        break;
+
+    case BLE_GAP_EVENT_REPEAT_PAIRING: {
+        if (!s_pairing_allowed) {
+            ESP_LOGW(TAG, "Re-pairing rejected (pairing window closed)");
+            return BLE_GAP_REPEAT_PAIRING_IGNORE;
+        }
+        // Delete old bond and allow re-pairing
+        struct ble_gap_conn_desc desc;
+        ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc);
+        ble_store_util_delete_peer(&desc.peer_id_addr);
+        ESP_LOGI(TAG, "Allowing re-pairing");
+        return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
         start_advertising();
@@ -203,8 +266,15 @@ esp_err_t ble_server_init(void)
     // Configure NimBLE host
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
-    ble_hs_cfg.sm_bonding = 0;
-    ble_hs_cfg.sm_sc = 0;
+
+    // Security manager: Just Works pairing with bonding
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
 
     // Build combined GATT service table: CAN + OTA
     const struct ble_gatt_svc_def *ota_svc = ble_ota_get_service_def();
@@ -274,4 +344,27 @@ bool ble_server_is_connected(void)
 uint16_t ble_server_get_conn_handle(void)
 {
     return s_conn_handle;
+}
+
+void ble_server_enter_pairing_mode(uint32_t duration_sec)
+{
+    s_pairing_allowed = true;
+    ESP_LOGI(TAG, "Pairing window open for %lu seconds", (unsigned long)duration_sec);
+
+    // Create timers on first call
+    if (!s_pairing_timer) {
+        s_pairing_timer = xTimerCreate("pair_tmr", pdMS_TO_TICKS(duration_sec * 1000),
+                                        pdFALSE, NULL, pairing_timer_cb);
+        s_blink_timer = xTimerCreate("blink_tmr", pdMS_TO_TICKS(500),
+                                      pdTRUE, NULL, blink_timer_cb);
+    } else {
+        xTimerChangePeriod(s_pairing_timer, pdMS_TO_TICKS(duration_sec * 1000), 0);
+    }
+
+    xTimerStart(s_pairing_timer, 0);
+
+    // Blink green LED to indicate pairing mode
+    s_blink_on = true;
+    led_set_color(LED_COLOR_GREEN);
+    xTimerStart(s_blink_timer, 0);
 }

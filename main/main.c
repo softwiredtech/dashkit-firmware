@@ -222,6 +222,9 @@ void app_main(void)
     ESP_ERROR_CHECK(ble_ota_init());
     ESP_ERROR_CHECK(ble_server_start());
 
+    // Open pairing window for 60 seconds (green LED blinks)
+    ble_server_enter_pairing_mode(60);
+
     // Bridge task: CAN -> BLE
     xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 4096, NULL, 5, NULL, 0);
 
@@ -231,6 +234,4 @@ void app_main(void)
 #endif
 
     ESP_LOGI(TAG, "DashKit firmware ready");
-
-    led_set_color(LED_COLOR_GREEN);
 }
