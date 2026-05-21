@@ -2,6 +2,7 @@
 #include "led.h"
 #include "can_interface.h"
 #include "can_manager.h"
+#include "can_filter.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
@@ -107,17 +108,24 @@ static void can_to_ble_task(void *arg)
 
     while (true) {
         int count = 0;
+        can_tagged_frame_t scratch;
 
-        // Wait for at least one frame
-        if (can_manager_receive(&batch[0], 100) == ESP_OK) {
-            count = 1;
+        // Wait for the first frame that passes the filter
+        while (count == 0) {
+            if (can_manager_receive(&scratch, 100) != ESP_OK) break;
+            if (can_filter_should_forward(scratch.bus_id, scratch.frame.id)) {
+                batch[count++] = scratch;
+            }
+        }
 
-            // Try to fill the batch without blocking long
+        if (count > 0) {
+            // Try to fill the batch without blocking long, dropping filtered frames
             while (count < BLE_BATCH_MAX_FRAMES) {
-                if (can_manager_receive(&batch[count], BLE_BATCH_TIMEOUT_MS) == ESP_OK) {
-                    count++;
-                } else {
+                if (can_manager_receive(&scratch, BLE_BATCH_TIMEOUT_MS) != ESP_OK) {
                     break;
+                }
+                if (can_filter_should_forward(scratch.bus_id, scratch.frame.id)) {
+                    batch[count++] = scratch;
                 }
             }
 
@@ -164,6 +172,9 @@ void app_main(void)
 
     // CAN manager
     ESP_ERROR_CHECK(can_manager_init());
+
+    // CAN filter (configured by BLE client; empty = forward all)
+    ESP_ERROR_CHECK(can_filter_init());
 
     // CAN interface 0 (MCP2518FD)
     mcp251xfd_config_t can0_cfg = {

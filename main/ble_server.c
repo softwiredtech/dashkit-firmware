@@ -1,5 +1,6 @@
 #include "ble_server.h"
 #include "ble_ota.h"
+#include "can_filter.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -25,6 +26,15 @@ static const ble_uuid128_t s_svc_uuid = BLE_UUID128_INIT(
 static const ble_uuid128_t s_chr_uuid = BLE_UUID128_INIT(
     0xA1, 0x00, 0x01, 0xAA, 0x00, 0xC0, 0xD6, 0xB0,
     0xE0, 0xB1, 0x00, 0xCA, 0x01, 0x00, 0xDA, 0xCA
+);
+
+// CAN filter characteristic (write):
+//   CADA0002-CA00-B1E0-B0D6-C000AA0100A1
+// Wire format: [bus][num_addrs][addr_LE32]*  repeated per bus.
+// Empty write clears the filter.
+static const ble_uuid128_t s_filter_uuid = BLE_UUID128_INIT(
+    0xA1, 0x00, 0x01, 0xAA, 0x00, 0xC0, 0xD6, 0xB0,
+    0xE0, 0xB1, 0x00, 0xCA, 0x02, 0x00, 0xDA, 0xCA
 );
 
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
@@ -63,6 +73,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_notifications_enabled = false;
         ble_ota_on_disconnect();
+        // Drop the filter so the next client starts in pass-through mode.
+        can_filter_set(NULL, 0);
         start_advertising();
         break;
 
@@ -140,6 +152,41 @@ static int gatt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
     return BLE_ATT_ERR_UNLIKELY;
 }
 
+// Write callback for the CAN filter characteristic. Drains the mbuf chain
+// into a flat buffer and hands it to can_filter_set().
+static int gatt_filter_access(uint16_t conn_handle, uint16_t attr_handle,
+                              struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn_handle;
+    (void)attr_handle;
+    (void)arg;
+
+    if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
+    uint8_t buf[256];
+    if (len > sizeof(buf)) {
+        ESP_LOGW(TAG, "Filter write too large (%u bytes)", len);
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    uint16_t out_len = 0;
+    int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), &out_len);
+    if (rc != 0) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    ESP_LOGI(TAG, "CAN filter write received (%u bytes)", out_len);
+    esp_err_t err = can_filter_set(buf, out_len);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "can_filter_set failed: %s", esp_err_to_name(err));
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // GATT service definition
 // ---------------------------------------------------------------------------
@@ -154,6 +201,11 @@ static const struct ble_gatt_svc_def s_can_svc_def[] = {
                 .access_cb = gatt_chr_access,
                 .val_handle = &s_chr_val_handle,
                 .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ,
+            },
+            {
+                .uuid = &s_filter_uuid.u,
+                .access_cb = gatt_filter_access,
+                .flags = BLE_GATT_CHR_F_WRITE,
             },
             { 0 },  // Terminator
         },
