@@ -14,6 +14,11 @@
 #include "freertos/timers.h"
 #include <string.h>
 
+// Provided by nimble/host/store/config — wires up the NVS-backed
+// store_read_cb / store_write_cb / store_delete_cb so bonds persist
+// across reboots. Without this, sm_bonding=1 only keeps keys in RAM.
+extern void ble_store_config_init(void);
+
 static const char *TAG = "ble";
 
 #define DEVICE_NAME "DashKit"
@@ -73,10 +78,23 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             s_conn_handle = event->connect.conn_handle;
             ESP_LOGI(TAG, "Connected (handle=%d)", s_conn_handle);
 
-            // Check if this peer is already bonded
+            // Check if this peer is in our stored bonds. At BLE_GAP_EVENT_CONNECT
+            // the link is brand new and unencrypted, so desc.sec_state.bonded is
+            // always false — we must look the peer up in the persistent store.
             struct ble_gap_conn_desc desc;
             ble_gap_conn_find(s_conn_handle, &desc);
-            bool bonded = desc.sec_state.bonded;
+
+            ble_addr_t bonded_peers[CONFIG_BT_NIMBLE_MAX_BONDS];
+            int num_bonded = 0;
+            ble_store_util_bonded_peers(bonded_peers, &num_bonded,
+                                        CONFIG_BT_NIMBLE_MAX_BONDS);
+            bool bonded = false;
+            for (int i = 0; i < num_bonded; i++) {
+                if (ble_addr_cmp(&bonded_peers[i], &desc.peer_id_addr) == 0) {
+                    bonded = true;
+                    break;
+                }
+            }
 
             if (!bonded && !s_pairing_allowed) {
                 ESP_LOGW(TAG, "Rejecting unbonded peer (pairing window closed)");
@@ -84,16 +102,16 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
                 break;
             }
 
-            // Request higher MTU for larger CAN frame batches
-            ble_att_set_preferred_mtu(512);
-            ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
-            // Request 2M PHY for higher throughput
-            ble_gap_set_prefered_le_phy(s_conn_handle,
-                                        BLE_GAP_LE_PHY_2M_MASK,
-                                        BLE_GAP_LE_PHY_2M_MASK,
-                                        BLE_GAP_LE_PHY_CODED_ANY);
-            // Initiate security (triggers pairing for new peers, encryption for bonded)
-            ble_gap_security_initiate(s_conn_handle);
+            // Do NOT touch MTU / PHY / GATT here. Wait until the link is
+            // encrypted (BLE_GAP_EVENT_ENC_CHANGE). Issuing MTU exchange
+            // while encryption is being set up races with the SMP exchange
+            // and can crash the host on some configurations.
+            if (!bonded) {
+                // Unknown peer with pairing window open → drive pairing.
+                // For already-bonded peers, Android auto-encrypts using the
+                // stored LTK and we'd just race it by initiating here.
+                ble_gap_security_initiate(s_conn_handle);
+            }
         } else {
             ESP_LOGW(TAG, "Connection failed, status=%d", event->connect.status);
             start_advertising();
@@ -122,8 +140,17 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_ENC_CHANGE:
         if (event->enc_change.status == 0) {
             ESP_LOGI(TAG, "Encryption enabled (handle=%d)", event->enc_change.conn_handle);
+            // Link is secure. The Android client drives the MTU exchange
+            // (only the client may initiate it), so we don't call
+            // ble_gattc_exchange_mtu here. We only request a faster PHY;
+            // the central is free to accept or stay on 1M.
+            ble_gap_set_prefered_le_phy(event->enc_change.conn_handle,
+                                        BLE_GAP_LE_PHY_2M_MASK,
+                                        BLE_GAP_LE_PHY_2M_MASK,
+                                        BLE_GAP_LE_PHY_CODED_ANY);
         } else {
             ESP_LOGW(TAG, "Encryption failed: status=%d", event->enc_change.status);
+            ble_gap_terminate(event->enc_change.conn_handle, BLE_ERR_AUTH_FAIL);
         }
         break;
 
@@ -138,6 +165,21 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         ble_store_util_delete_peer(&desc.peer_id_addr);
         ESP_LOGI(TAG, "Allowing re-pairing");
         return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
+
+    case BLE_GAP_EVENT_PASSKEY_ACTION: {
+        // Numeric Comparison: auto-accept on the ESP32 side.
+        // The user confirms on the Android dialog, which is sufficient.
+        if (event->passkey.params.action == BLE_SM_IOACT_NUMCMP) {
+            struct ble_sm_io pk = {0};
+            pk.action = BLE_SM_IOACT_NUMCMP;
+            pk.numcmp_accept = 1;
+            int rc = ble_sm_inject_io(event->passkey.conn_handle, &pk);
+            ESP_LOGI(TAG, "Numeric Comparison auto-accepted (rc=%d)", rc);
+        } else {
+            ESP_LOGW(TAG, "Unexpected passkey action: %d", event->passkey.params.action);
+        }
+        break;
     }
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
@@ -267,11 +309,13 @@ esp_err_t ble_server_init(void)
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
 
-    // Security manager: Just Works pairing with bonding
+    // Security manager: Numeric Comparison pairing with bonding.
+    // Using DISP_YES_NO forces a confirmation dialog on Android,
+    // which guarantees the bond is persisted.
     ble_hs_cfg.sm_bonding = 1;
     ble_hs_cfg.sm_sc = 1;
-    ble_hs_cfg.sm_mitm = 0;
-    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
+    ble_hs_cfg.sm_mitm = 1;
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_DISP_YES_NO;
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
@@ -300,6 +344,15 @@ esp_err_t ble_server_init(void)
 
     // Set device name
     ble_svc_gap_device_name_set(DEVICE_NAME);
+
+    // Advertise that we can speak up to 512-byte ATT MTU. Android will
+    // initiate the actual MTU exchange from its side (only the client may
+    // initiate it), and we'll agree on the min of both sides' preferences.
+    ble_att_set_preferred_mtu(512);
+
+    // Install NVS-backed bond store (must be after nimble_port_init,
+    // before nimble_port_run). This is what makes bonds survive reboots.
+    ble_store_config_init();
 
     ESP_LOGI(TAG, "BLE GATT server initialized");
     return ESP_OK;
