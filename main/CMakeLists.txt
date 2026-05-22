@@ -5,6 +5,7 @@ idf_component_register(
         "mcp251xfd.c"
         "can_manager.c"
         "can_filter.c"
+        "can_sim.c"
         "ble_server.c"
         "ble_ota.c"
     INCLUDE_DIRS

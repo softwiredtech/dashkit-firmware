@@ -7,7 +7,9 @@
 
 static const char *TAG = "can_mgr";
 
-#define RX_QUEUE_DEPTH  128
+// Sized to absorb a few hundred ms of CAN traffic if BLE briefly stalls.
+// At ~335 fps (realistic Tesla rates) this is ~750ms of headroom.
+#define RX_QUEUE_DEPTH  256
 
 static can_interface_t *s_interfaces[CAN_MANAGER_MAX_INTERFACES];
 static int              s_iface_count = 0;
