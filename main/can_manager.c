@@ -88,6 +88,19 @@ esp_err_t can_manager_receive(can_tagged_frame_t *frame, uint32_t timeout_ms)
     return ESP_ERR_TIMEOUT;
 }
 
+esp_err_t can_manager_send(uint8_t bus_id, const can_frame_t *frame)
+{
+    if (!frame) return ESP_ERR_INVALID_ARG;
+    for (int i = 0; i < s_iface_count; i++) {
+        if (s_interfaces[i]->bus_id == bus_id) {
+            if (!s_interfaces[i]->send) return ESP_ERR_NOT_SUPPORTED;
+            return s_interfaces[i]->send(s_interfaces[i], frame);
+        }
+    }
+    ESP_LOGW(TAG, "send: no interface for bus_id=%d", bus_id);
+    return ESP_ERR_NOT_FOUND;
+}
+
 esp_err_t can_manager_inject(const can_tagged_frame_t *frame)
 {
     if (!s_rx_queue) return ESP_ERR_INVALID_STATE;

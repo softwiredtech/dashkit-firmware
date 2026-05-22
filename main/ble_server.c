@@ -1,6 +1,8 @@
 #include "ble_server.h"
 #include "ble_ota.h"
 #include "can_filter.h"
+#include "can_manager.h"
+#include "can_interface.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -35,6 +37,17 @@ static const ble_uuid128_t s_chr_uuid = BLE_UUID128_INIT(
 static const ble_uuid128_t s_filter_uuid = BLE_UUID128_INIT(
     0xA1, 0x00, 0x01, 0xAA, 0x00, 0xC0, 0xD6, 0xB0,
     0xE0, 0xB1, 0x00, 0xCA, 0x02, 0x00, 0xDA, 0xCA
+);
+
+// CAN TX characteristic (write):
+//   CADA0003-CA00-B1E0-B0D6-C000AA0100A1
+// Wire format (one CAN frame per write):
+//   [bus][flags][addr_LE32][len][data...]
+//   flags: bit0 = extended ID (29-bit), bit1 = CAN FD, bit2 = bit rate switch
+//   len: number of data bytes that follow (<= 8 for classic, <= 64 for FD)
+static const ble_uuid128_t s_tx_uuid = BLE_UUID128_INIT(
+    0xA1, 0x00, 0x01, 0xAA, 0x00, 0xC0, 0xD6, 0xB0,
+    0xE0, 0xB1, 0x00, 0xCA, 0x03, 0x00, 0xDA, 0xCA
 );
 
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
@@ -187,6 +200,75 @@ static int gatt_filter_access(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
+// Write callback for the CAN TX characteristic. Parses one CAN frame from
+// the wire format and dispatches it to the matching CAN interface.
+static int gatt_tx_access(uint16_t conn_handle, uint16_t attr_handle,
+                          struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn_handle;
+    (void)attr_handle;
+    (void)arg;
+
+    if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    // Header: bus(1) + flags(1) + addr(4) + len(1) = 7 bytes
+    uint16_t in_len = OS_MBUF_PKTLEN(ctxt->om);
+    if (in_len < 7) {
+        ESP_LOGW(TAG, "TX write too short (%u bytes)", in_len);
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    uint8_t buf[7 + CAN_MAX_DATA_LEN];
+    if (in_len > sizeof(buf)) {
+        ESP_LOGW(TAG, "TX write too large (%u bytes)", in_len);
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    uint16_t out_len = 0;
+    int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), &out_len);
+    if (rc != 0) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    uint8_t  bus    = buf[0];
+    uint8_t  flags  = buf[1];
+    uint32_t addr   = (uint32_t)buf[2]
+                    | ((uint32_t)buf[3] << 8)
+                    | ((uint32_t)buf[4] << 16)
+                    | ((uint32_t)buf[5] << 24);
+    uint8_t  dlc    = buf[6];
+
+    if (7 + dlc > out_len) {
+        ESP_LOGW(TAG, "TX write: dlc=%u exceeds payload (%u bytes)", dlc, out_len);
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    if (dlc > CAN_MAX_DATA_LEN) {
+        ESP_LOGW(TAG, "TX write: dlc=%u exceeds CAN_MAX_DATA_LEN", dlc);
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    can_frame_t frame = {
+        .id       = addr,
+        .dlc      = dlc,
+        .extended = (flags & 0x01) != 0,
+        .fd       = (flags & 0x02) != 0,
+        .brs      = (flags & 0x04) != 0,
+    };
+    if (dlc > 0) {
+        memcpy(frame.data, &buf[7], dlc);
+    }
+
+    esp_err_t err = can_manager_send(bus, &frame);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "can_manager_send(bus=%u, id=0x%lX) failed: %s",
+                 bus, (unsigned long)addr, esp_err_to_name(err));
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // GATT service definition
 // ---------------------------------------------------------------------------
@@ -205,6 +287,11 @@ static const struct ble_gatt_svc_def s_can_svc_def[] = {
             {
                 .uuid = &s_filter_uuid.u,
                 .access_cb = gatt_filter_access,
+                .flags = BLE_GATT_CHR_F_WRITE,
+            },
+            {
+                .uuid = &s_tx_uuid.u,
+                .access_cb = gatt_tx_access,
                 .flags = BLE_GATT_CHR_F_WRITE,
             },
             { 0 },  // Terminator

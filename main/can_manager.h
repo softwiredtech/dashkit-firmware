@@ -22,3 +22,7 @@ esp_err_t can_manager_receive(can_tagged_frame_t *frame, uint32_t timeout_ms);
 
 // Inject a frame into the RX queue (for simulator use). Timestamps automatically.
 esp_err_t can_manager_inject(const can_tagged_frame_t *frame);
+
+// Transmit a frame on the interface with the given bus_id.
+// Returns ESP_ERR_NOT_FOUND if no interface matches bus_id.
+esp_err_t can_manager_send(uint8_t bus_id, const can_frame_t *frame);
