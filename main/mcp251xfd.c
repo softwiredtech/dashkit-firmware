@@ -615,10 +615,11 @@ static esp_err_t iface_start(can_interface_t *self)
     write_reg32(ctx, REG_C1BDIAG0, 0);
     write_reg32(ctx, REG_C1BDIAG1, 0);
 
-    // Listen-only mode: passively receives CAN 2.0 and CAN FD frames
-    // without sending ACKs or error frames (safe for bus monitoring).
-    // To enable TX, change to OPMODE_NORMAL_2_0 (or OPMODE_NORMAL_FD for CAN FD).
-    esp_err_t err = set_mode(ctx, OPMODE_LISTEN_ONLY);
+    // Normal CAN 2.0 mode: receives frames and is allowed to transmit
+    // (ACKs incoming frames and sends queued TX frames). Required for the
+    // BLE CAN TX characteristic to actually put frames on the bus.
+    // For passive monitoring only, change to OPMODE_LISTEN_ONLY.
+    esp_err_t err = set_mode(ctx, OPMODE_NORMAL_2_0);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Bus %d: failed to enter normal mode", ctx->bus_id);
         return err;
