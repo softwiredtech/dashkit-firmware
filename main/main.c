@@ -108,25 +108,19 @@ static void can_to_ble_task(void *arg)
 
     while (true) {
         int count = 0;
-        can_tagged_frame_t scratch;
 
-        // Wait for the first frame that passes the filter
-        while (count == 0) {
-            if (can_manager_receive(&scratch, 100) != ESP_OK) break;
-            if (can_filter_should_forward(scratch.bus_id, scratch.frame.id)) {
-                batch[count++] = scratch;
-            }
-        }
+        // Wait for at least one frame. Filtering happens at the CAN driver
+        // callback, so anything we get here is already destined for BLE.
+        if (can_manager_receive(&batch[0], 100) == ESP_OK) {
+            count = 1;
 
-        if (count > 0) {
-            // Try to fill the batch without blocking long, dropping filtered frames
+            // Try to fill the batch, flushing as soon as matching traffic
+            // pauses for BLE_BATCH_TIMEOUT_MS.
             while (count < BLE_BATCH_MAX_FRAMES) {
-                if (can_manager_receive(&scratch, BLE_BATCH_TIMEOUT_MS) != ESP_OK) {
+                if (can_manager_receive(&batch[count], BLE_BATCH_TIMEOUT_MS) != ESP_OK) {
                     break;
                 }
-                if (can_filter_should_forward(scratch.bus_id, scratch.frame.id)) {
-                    batch[count++] = scratch;
-                }
+                count++;
             }
 
 #ifdef CONFIG_DASHKIT_DEBUG_LOG
