@@ -2,9 +2,13 @@
 #include "led.h"
 #include "can_interface.h"
 #include "can_manager.h"
+#include "can_filter.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
+#ifdef DASHKIT_SIM_MODE
+#include "can_sim.h"
+#endif
 
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -14,10 +18,17 @@
 
 static const char *TAG = "main";
 
-// Maximum CAN frames per BLE notification packet
+// Maximum CAN frames per BLE notification packet.
+// With ATT MTU 247 negotiated, payload room is ~244 bytes. Each frame is
+// 1+4+1+4+1+8 = 19 bytes in the wire format, so up to ~12 frames fit per
+// notify; allow some slack for shorter frames.
 #define BLE_BATCH_MAX_FRAMES  16
-// Maximum time to wait for a full batch before sending partial
-#define BLE_BATCH_TIMEOUT_MS  5
+// Maximum time to wait for a full batch before sending partial. Longer
+// timeouts coalesce more frames per notify, lowering the notify rate
+// NimBLE has to push through the connection interval. 20ms keeps UI
+// latency snappy while letting ~7 frames pack per BLE packet at the
+// realistic ~335 fps CAN load.
+#define BLE_BATCH_TIMEOUT_MS  20
 
 // Build a DashPilot-compatible BLE packet from CAN frames.
 // Format: [count][timestamp_us_LE32, bus, addr_LE32, len, data...]...
@@ -64,61 +75,33 @@ static size_t build_ble_packet(const can_tagged_frame_t *frames, int count, uint
     return pos;
 }
 
-#ifdef DASHKIT_SIM_MODE
-// Simulator task: replays DI_vehicleEstimates (0x267) with cycling counter
-static void can_sim_task(void *arg)
-{
-    (void)arg;
-    uint8_t counter = 0;
-
-    ESP_LOGI(TAG, "CAN simulator started (DI_vehicleEstimates 0x267)");
-
-    while (true) {
-        can_tagged_frame_t f = {0};
-        f.bus_id = 1;
-        f.frame.id = 0x267;
-        f.frame.dlc = 8;
-
-        // DI_mass: bits [9:0], value=20 -> (20*5)+1900 = 2000 kg
-        // Byte 0 = bits [7:0] of mass = 20 & 0xFF = 0x14
-        // Byte 1 bits [1:0] = bits [9:8] of mass = 0
-        f.frame.data[0] = 0x14;
-        f.frame.data[1] = 0x00;
-
-        // DI_vehicleEstimatesCounter: start bit 13, length 3, little-endian
-        // Bit 13 in byte-level: byte 1, bit 5 (13 / 8 = 1, 13 % 8 = 5)
-        // 3 bits at [15:13] = byte 1 bits [7:5]
-        f.frame.data[1] |= (counter & 0x07) << 5;
-
-        can_manager_inject(&f);
-
-        counter = (counter + 1) & 0x07;
-        vTaskDelay(pdMS_TO_TICKS(100));  // 10 Hz
-    }
-}
-#endif
-
 // Task that bridges CAN frames to BLE notifications
 static void can_to_ble_task(void *arg)
 {
     (void)arg;
-    can_tagged_frame_t batch[BLE_BATCH_MAX_FRAMES];
-    uint8_t ble_buf[512];
+    // Keep these out of the task stack: each can_tagged_frame_t is ~80 bytes
+    // (CAN FD data field), so a 16-frame batch + 512B BLE buffer is ~1.8KB
+    // of locals before any function call. Combined with NimBLE's deep call
+    // chain from ble_server_notify, that overflows even an 8KB stack under
+    // heavy load.
+    static can_tagged_frame_t batch[BLE_BATCH_MAX_FRAMES];
+    static uint8_t ble_buf[512];
 
     while (true) {
         int count = 0;
 
-        // Wait for at least one frame
+        // Wait for at least one frame. Filtering happens at the CAN driver
+        // callback, so anything we get here is already destined for BLE.
         if (can_manager_receive(&batch[0], 100) == ESP_OK) {
             count = 1;
 
-            // Try to fill the batch without blocking long
+            // Try to fill the batch, flushing as soon as matching traffic
+            // pauses for BLE_BATCH_TIMEOUT_MS.
             while (count < BLE_BATCH_MAX_FRAMES) {
-                if (can_manager_receive(&batch[count], BLE_BATCH_TIMEOUT_MS) == ESP_OK) {
-                    count++;
-                } else {
+                if (can_manager_receive(&batch[count], BLE_BATCH_TIMEOUT_MS) != ESP_OK) {
                     break;
                 }
+                count++;
             }
 
 #ifdef CONFIG_DASHKIT_DEBUG_LOG
@@ -164,6 +147,9 @@ void app_main(void)
 
     // CAN manager
     ESP_ERROR_CHECK(can_manager_init());
+
+    // CAN filter (configured by BLE client; empty = forward all)
+    ESP_ERROR_CHECK(can_filter_init());
 
     // CAN interface 0 (MCP2518FD)
     mcp251xfd_config_t can0_cfg = {
@@ -223,11 +209,11 @@ void app_main(void)
     ESP_ERROR_CHECK(ble_server_start());
 
     // Bridge task: CAN -> BLE
-    xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 4096, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 8192, NULL, 5, NULL, 0);
 
 #ifdef DASHKIT_SIM_MODE
-    // Simulator task: generates fake CAN frames
-    xTaskCreatePinnedToCore(can_sim_task, "can_sim", 4096, NULL, 4, NULL, 0);
+    // Simulator task: emits DashPilot's filtered Tesla message set
+    can_sim_start();
 #endif
 
     ESP_LOGI(TAG, "DashKit firmware ready");

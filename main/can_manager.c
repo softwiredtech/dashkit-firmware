@@ -1,4 +1,5 @@
 #include "can_manager.h"
+#include "can_filter.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -6,7 +7,9 @@
 
 static const char *TAG = "can_mgr";
 
-#define RX_QUEUE_DEPTH  128
+// Sized to absorb a few hundred ms of CAN traffic if BLE briefly stalls.
+// At ~335 fps (realistic Tesla rates) this is ~750ms of headroom.
+#define RX_QUEUE_DEPTH  256
 
 static can_interface_t *s_interfaces[CAN_MANAGER_MAX_INTERFACES];
 static int              s_iface_count = 0;
@@ -16,12 +19,17 @@ static QueueHandle_t    s_rx_queue = NULL;
 static void on_frame_received(const can_tagged_frame_t *frame, void *user_ctx)
 {
     (void)user_ctx;
-    if (s_rx_queue) {
-        can_tagged_frame_t stamped = *frame;
-        stamped.timestamp_us = (uint32_t)esp_timer_get_time();
-        // Drop frame if queue is full rather than blocking the driver
-        xQueueSend(s_rx_queue, &stamped, 0);
-    }
+    if (!s_rx_queue) return;
+    // Drop non-matching frames at the source so the bridge task's batching
+    // timeout reflects "no more *matching* frames" rather than "no more
+    // frames at all". This avoids holding onto a matching frame while we
+    // wait through a flood of unrelated traffic.
+    if (!can_filter_should_forward(frame->bus_id, frame->frame.id)) return;
+
+    can_tagged_frame_t stamped = *frame;
+    stamped.timestamp_us = (uint32_t)esp_timer_get_time();
+    // Drop frame if queue is full rather than blocking the driver
+    xQueueSend(s_rx_queue, &stamped, 0);
 }
 
 esp_err_t can_manager_init(void)
@@ -83,6 +91,9 @@ esp_err_t can_manager_receive(can_tagged_frame_t *frame, uint32_t timeout_ms)
 esp_err_t can_manager_inject(const can_tagged_frame_t *frame)
 {
     if (!s_rx_queue) return ESP_ERR_INVALID_STATE;
+    if (!can_filter_should_forward(frame->bus_id, frame->frame.id)) {
+        return ESP_OK;  // Silently dropped by filter
+    }
     can_tagged_frame_t stamped = *frame;
     stamped.timestamp_us = (uint32_t)esp_timer_get_time();
     if (xQueueSend(s_rx_queue, &stamped, 0) == pdTRUE) {
