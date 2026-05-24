@@ -273,9 +273,12 @@ static esp_err_t configure_bitrate(mcp251xfd_ctx_t *ctx)
 
 static esp_err_t configure_fifos(mcp251xfd_ctx_t *ctx)
 {
-    // FIFO 1: RX FIFO - 16 messages deep, 8 byte payload
+    // FIFO 1: RX FIFO - 32 messages deep (max for FSIZE field), 8 byte payload.
+    // 32 * 16 bytes = 512 B of the chip's 2 KB RAM. TX FIFO uses another 64 B.
+    // Larger depth absorbs SPI/scheduling jitter (both CAN chips share SPI2,
+    // and the rx_task only runs once per FreeRTOS tick).
     uint32_t rxfifo_con = (0 << FIFOCON_PLSIZE_SHIFT) |  // 8 bytes payload
-                          (15 << FIFOCON_FSIZE_SHIFT) |   // 16 messages (value = n-1)
+                          (31 << FIFOCON_FSIZE_SHIFT) |   // 32 messages (value = n-1)
                           FIFOCON_TFNRFNIE;               // Not-empty interrupt
     esp_err_t err = write_reg32(ctx, REG_C1FIFOCON(1), rxfifo_con);
     if (err != ESP_OK) return err;
@@ -382,9 +385,17 @@ static void rx_task(void *arg)
 #endif
 
     while (ctx->running) {
+        // Block on the GPIO ISR semaphore (given on INT falling edge).
+        // Fall through every 5 ms anyway as a safety net so we still drain the
+        // FIFO if an interrupt is ever missed (e.g. semaphore lost during init,
+        // or INT line already low when we enabled the IRQ).
+        xSemaphoreTake(ctx->int_sem, pdMS_TO_TICKS(5));
+
+        // INT is level-sensitive on the MCP2518FD: it stays asserted as long
+        // as RXIF is set, so we drain the whole FIFO in one go. Reading the
+        // FIFO clears RXIF, which releases INT.
         uint32_t intflag;
         read_reg32(ctx, REG_C1INT, &intflag);
-
         if (intflag & C1INT_RXIF) {
             read_rx_fifo(ctx);
         }
@@ -402,8 +413,6 @@ static void rx_task(void *arg)
                      (unsigned long)diag0, (unsigned long)diag1);
         }
 #endif
-
-        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
     vTaskDelete(NULL);
