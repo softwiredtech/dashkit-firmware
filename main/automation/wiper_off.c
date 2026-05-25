@@ -19,22 +19,23 @@ static const char *TAG = "wiper_off";
 // How far ahead of the last observed SCCM counter to start injecting.
 #define COUNTER_OFFSET  1
 
-// ---- Tesla checksum ----
-// Seed table derived from 16 idle (wipe=0) SCCM frames.
-static const uint8_t SCCM_SEED[16] = {
-    0x9B, 0xE8, 0x2A, 0xD3, 0xD3, 0x83, 0x4C, 0x5E,
-    0x3F, 0x5E, 0xE2, 0x28, 0x3A, 0x13, 0xAF, 0xCE
-};
-// Delta when wash_wipe = 1 (1ST_DETENT).
-#define WIPE1_DELTA  0xF7
+// Tesla checksum: sum of address bytes + all data bytes except the checksum byte.
+// Matches opendbc / panda steering_button_mode.py implementation.
+static uint8_t tesla_checksum(uint32_t addr, const uint8_t *dat, uint8_t len, uint8_t cksum_byte)
+{
+    uint8_t sum = (addr & 0xFF) + ((addr >> 8) & 0xFF);
+    for (uint8_t i = 0; i < len; i++) {
+        if (i != cksum_byte) sum += dat[i];
+    }
+    return sum;
+}
 
 static void build_left_stalk(uint8_t out[3], uint8_t counter,
                               uint8_t wash_wipe)
 {
     out[1] = (counter & 0x0F) | ((wash_wipe & 0x03) << 6);
     out[2] = 0;
-    out[0] = SCCM_SEED[counter & 0x0F];
-    if (wash_wipe == 1) out[0] += WIPE1_DELTA;
+    out[0] = tesla_checksum(SCCM_LEFT_STALK_ID, out, 3, 0);
 }
 
 // ---- State ----
