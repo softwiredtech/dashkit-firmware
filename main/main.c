@@ -3,6 +3,7 @@
 #include "can_interface.h"
 #include "can_manager.h"
 #include "can_filter.h"
+#include "wiper_off.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
@@ -151,6 +152,8 @@ void app_main(void)
     // CAN filter (configured by BLE client; empty = forward all)
     ESP_ERROR_CHECK(can_filter_init());
 
+    // Auto wiper-off automation
+    ESP_ERROR_CHECK(wiper_off_init());
 
     // CAN interface 0 (MCP2518FD)
     mcp251xfd_config_t can0_cfg = {
