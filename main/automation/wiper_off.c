@@ -50,8 +50,8 @@ static void wiper_off_task(void *arg)
 
     uint8_t counter = (s_last_counter + COUNTER_OFFSET) & 0x0F;
 
-    // Phase 1: hold wiper button (1ST_DETENT) for 200ms at 100Hz
-    int64_t end = esp_timer_get_time() + 200000;
+    // Phase 1: hold wiper button (1ST_DETENT) for 300ms at 100Hz
+    int64_t end = esp_timer_get_time() + 300000;
     while (esp_timer_get_time() < end) {
         can_frame_t f = { .id = SCCM_LEFT_STALK_ID, .dlc = SCCM_LEFT_STALK_DLC };
         build_left_stalk(f.data, counter, 1);
@@ -60,12 +60,18 @@ static void wiper_off_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-    // Phase 2: scroll-down tick
-    can_frame_t scroll = { .id = VCLEFT_SWITCH_STATUS_ID, .dlc = VCLEFT_SWITCH_STATUS_DLC };
-    memset(scroll.data, 0, 8);
-    scroll.data[0] = 0x01;   // mux index 1
-    scroll.data[2] = 0x3F;   // swcLeftScrollTicks = -1 (6-bit signed)
-    can_manager_send(BUS, &scroll);
+    // Gap: let the car register the button hold
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // Phase 2: scroll-down ticks (send twice for reliability)
+    for (int i = 0; i < 2; i++) {
+        can_frame_t scroll = { .id = VCLEFT_SWITCH_STATUS_ID, .dlc = VCLEFT_SWITCH_STATUS_DLC };
+        memset(scroll.data, 0, 8);
+        scroll.data[0] = 0x01;   // mux index 1
+        scroll.data[2] = 0x3F;   // swcLeftScrollTicks = -1 (6-bit signed)
+        can_manager_send(BUS, &scroll);
+        if (i == 0) vTaskDelay(pdMS_TO_TICKS(50));
+    }
     ESP_LOGI(TAG, "scroll-down sent");
 
     ESP_LOGI(TAG, "done");
