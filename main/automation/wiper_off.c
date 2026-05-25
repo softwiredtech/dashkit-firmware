@@ -68,21 +68,6 @@ static void wiper_off_task(void *arg)
     can_manager_send(BUS, &scroll);
     ESP_LOGI(TAG, "scroll-down sent");
 
-    // Phase 3: brief hold with wiper button still pressed (100ms)
-    end = esp_timer_get_time() + 100000;
-    while (esp_timer_get_time() < end) {
-        can_frame_t f = { .id = SCCM_LEFT_STALK_ID, .dlc = SCCM_LEFT_STALK_DLC };
-        build_left_stalk(f.data, counter, 1);
-        can_manager_send(BUS, &f);
-        counter = (counter + 1) & 0x0F;
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-
-    // Phase 4: release
-    can_frame_t rel = { .id = SCCM_LEFT_STALK_ID, .dlc = SCCM_LEFT_STALK_DLC };
-    build_left_stalk(rel.data, counter, 0);
-    can_manager_send(BUS, &rel);
-
     ESP_LOGI(TAG, "done");
     vTaskDelete(NULL);
 }
