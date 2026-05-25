@@ -3,7 +3,6 @@
 #include "can_interface.h"
 #include "can_manager.h"
 #include "can_filter.h"
-#include "can_monitor.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
@@ -152,8 +151,6 @@ void app_main(void)
     // CAN filter (configured by BLE client; empty = forward all)
     ESP_ERROR_CHECK(can_filter_init());
 
-    // CAN monitor (logs SCCM_leftStalk counter changes; pre-filter)
-    ESP_ERROR_CHECK(can_monitor_init());
 
     // CAN interface 0 (MCP2518FD)
     mcp251xfd_config_t can0_cfg = {
