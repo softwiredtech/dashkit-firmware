@@ -678,7 +678,11 @@ static esp_err_t iface_send(can_interface_t *self, const can_frame_t *frame)
     if (frame->brs)      t1 |= (1 << 6);
 
     uint8_t data_len = dlc_to_len(frame->dlc);
-    uint8_t msg[8 + 64] = {0};
+    // Always write full 16-byte message slot (8-byte header + 8-byte data
+    // region) to the MCP2518FD TX FIFO RAM.  The ESP32 SPI peripheral with
+    // DMA enabled silently drops trailing bytes when the transfer length is
+    // not word-aligned.
+    uint8_t msg[16] = {0};
     msg[0] = t0 & 0xFF;
     msg[1] = (t0 >> 8) & 0xFF;
     msg[2] = (t0 >> 16) & 0xFF;
@@ -689,7 +693,7 @@ static esp_err_t iface_send(can_interface_t *self, const can_frame_t *frame)
     msg[7] = (t1 >> 24) & 0xFF;
     memcpy(&msg[8], frame->data, data_len);
 
-    spi_write_reg(ctx, RAM_BASE + ua, msg, 8 + data_len);
+    spi_write_reg(ctx, RAM_BASE + ua, msg, 16);
 
     // Set UINC and TXREQ
     uint32_t fifocon;
