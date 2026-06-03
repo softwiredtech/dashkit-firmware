@@ -4,6 +4,7 @@
 #include "can_manager.h"
 #include "can_interface.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
@@ -12,6 +13,10 @@
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include <string.h>
+
+// Provided by the NimBLE store/config component (NVS-backed bond storage).
+// Not exposed through a public esp-idf header, so declare it here.
+void ble_store_config_init(void);
 
 static const char *TAG = "ble";
 
@@ -67,14 +72,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         if (event->connect.status == 0) {
             s_conn_handle = event->connect.conn_handle;
             ESP_LOGI(TAG, "Connected (handle=%d)", s_conn_handle);
-            // Request higher MTU for larger CAN frame batches
             ble_att_set_preferred_mtu(512);
             ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
-            // Request 2M PHY for higher throughput
-            ble_gap_set_prefered_le_phy(s_conn_handle,
-                                        BLE_GAP_LE_PHY_2M_MASK,
-                                        BLE_GAP_LE_PHY_2M_MASK,
-                                        BLE_GAP_LE_PHY_CODED_ANY);
         } else {
             ESP_LOGW(TAG, "Connection failed, status=%d", event->connect.status);
             start_advertising();
@@ -114,6 +113,47 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
                  rx_phy == BLE_GAP_LE_PHY_2M ? "2" : "1");
         break;
     }
+
+    case BLE_GAP_EVENT_ENC_CHANGE:
+        // Pairing/encryption finished. status==0 means the link is now
+        // encrypted and (with bonding) the keys have been stored.
+        ESP_LOGI(TAG, "Encryption change: status=%d", event->enc_change.status);
+        if (event->enc_change.status == 0) {
+            // Safe to upgrade the PHY now that pairing is done. Doing this
+            // during connect races with the SMP exchange and breaks pairing.
+            ble_gap_set_prefered_le_phy(event->enc_change.conn_handle,
+                                        BLE_GAP_LE_PHY_2M_MASK,
+                                        BLE_GAP_LE_PHY_2M_MASK,
+                                        BLE_GAP_LE_PHY_CODED_ANY);
+        } else {
+            // Pairing failed, reboot device to get in a clean state for re-pair.
+            // This recovers from cases where you forget the device in Android / iOS Settings, then re-pair.
+            ESP_LOGW(TAG, "Pairing failed (status=%d); rebooting to clear stale SM state",
+                     event->enc_change.status);
+            esp_restart();
+        }
+        break;
+
+    case BLE_GAP_EVENT_REPEAT_PAIRING: {
+        // The peer is in our bond table but is pairing again (it forgot the
+        // bond on its side). Delete our stale bond so the keys match what the
+        // central sends.
+        struct ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) {
+            int drc = ble_store_util_delete_peer(&desc.peer_id_addr);
+            ESP_LOGW(TAG, "Repeat pairing: deleted stale bond (rc=%d), retrying", drc);
+        } else {
+            ESP_LOGW(TAG, "Repeat pairing: conn desc not found");
+        }
+        return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
+
+    case BLE_GAP_EVENT_PASSKEY_ACTION:
+        // With NoInputNoOutput IO caps this is Just Works, so there is no
+        // passkey to display or confirm. Nothing to do.
+        ESP_LOGI(TAG, "Passkey action: %d (Just Works, no input required)",
+                 event->passkey.params.action);
+        break;
 
     default:
         break;
@@ -282,17 +322,20 @@ static const struct ble_gatt_svc_def s_can_svc_def[] = {
                 .uuid = &s_chr_uuid.u,
                 .access_cb = gatt_chr_access,
                 .val_handle = &s_chr_val_handle,
-                .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ,
+                // Require an encrypted (paired+bonded) link before the client
+                // can read or subscribe to CAN data.
+                .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ
+                       | BLE_GATT_CHR_F_READ_ENC,
             },
             {
                 .uuid = &s_filter_uuid.u,
                 .access_cb = gatt_filter_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             },
             {
                 .uuid = &s_tx_uuid.u,
                 .access_cb = gatt_tx_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             },
             { 0 },  // Terminator
         },
@@ -342,8 +385,16 @@ esp_err_t ble_server_init(void)
     // Configure NimBLE host
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
-    ble_hs_cfg.sm_bonding = 0;
-    ble_hs_cfg.sm_sc = 0;
+
+    // "Just Works" pairing + bonding
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_sc = 1;  // LE Secure Connections
+    ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+
+    // Wire up the NVS-backed key store so bonds survive a reboot.
+    ble_store_config_init();
 
     // Build combined GATT service table: CAN + OTA
     const struct ble_gatt_svc_def *ota_svc = ble_ota_get_service_def();
