@@ -330,23 +330,24 @@ static const struct ble_gatt_svc_def s_ota_svc_def[] = {
         .uuid = &s_ota_svc_uuid.u,
         .characteristics = (struct ble_gatt_chr_def[]) {
             {
-                // Control: Write
+                // Control: Write (requires a paired+bonded, encrypted link)
                 .uuid = &s_ota_ctrl_uuid.u,
                 .access_cb = ota_ctrl_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             },
             {
                 // Data: Write With Response (reliable delivery)
                 .uuid = &s_ota_data_uuid.u,
                 .access_cb = ota_data_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             },
             {
                 // Status: Notify + Read
                 .uuid = &s_ota_status_uuid.u,
                 .access_cb = ota_status_access,
                 .val_handle = &s_ota_status_val_handle,
-                .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ,
+                .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ
+                       | BLE_GATT_CHR_F_READ_ENC,
             },
             { 0 },  // Terminator
         },
