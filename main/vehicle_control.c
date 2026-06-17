@@ -19,7 +19,6 @@ static const char *TAG = "veh_ctrl";
 // Tesla CAN message IDs (standard 11-bit).
 #define ID_UI_VEHICLE_CONTROL   0x273  // 627  UI_vehicleControl
 #define ID_UI_VEHICLE_CONTROL2  0x3B3  // 947  UI_vehicleControl2
-#define ID_UI_HVAC_REQUEST      0x2F3  // 755  UI_hvacRequest
 #define ID_UI_CHARGE_REQUEST    0x333  // 819  UI_chargeRequest
 
 // How aggressively to push each command onto the bus. Momentary requests
@@ -48,37 +47,11 @@ typedef struct {
 // packet is the raw signal value, clamped to `length` bits before packing.
 static const vc_command_t s_commands[] = {
     // UI_vehicleControl (0x273, 8 bytes)
-    { VC_CMD_LOCK,               ID_UI_VEHICLE_CONTROL,  VC_BUS, 17, 3, 8 },
     { VC_CMD_CLOSURE,            ID_UI_VEHICLE_CONTROL,  VC_BUS, 54, 2, 8 },
-    { VC_CMD_HONK_HORN,          ID_UI_VEHICLE_CONTROL,  VC_BUS, 61, 1, 8 },
     { VC_CMD_MIRROR_FOLD,        ID_UI_VEHICLE_CONTROL,  VC_BUS, 24, 2, 8 },
-    { VC_CMD_MIRROR_HEAT,        ID_UI_VEHICLE_CONTROL,  VC_BUS, 26, 1, 8 },
-    { VC_CMD_SEAT_HEAT_FL,       ID_UI_VEHICLE_CONTROL,  VC_BUS, 42, 2, 8 },
-    { VC_CMD_SEAT_HEAT_FR,       ID_UI_VEHICLE_CONTROL,  VC_BUS, 44, 2, 8 },
-    { VC_CMD_SEAT_HEAT_RL,       ID_UI_VEHICLE_CONTROL,  VC_BUS, 46, 2, 8 },
-    { VC_CMD_SEAT_HEAT_RR,       ID_UI_VEHICLE_CONTROL,  VC_BUS, 50, 2, 8 },
-    { VC_CMD_SEAT_HEAT_RC,       ID_UI_VEHICLE_CONTROL,  VC_BUS, 48, 2, 8 },
-    { VC_CMD_DISPLAY_BRIGHTNESS, ID_UI_VEHICLE_CONTROL,  VC_BUS, 32, 8, 8 },
-    { VC_CMD_DOME_LIGHT,         ID_UI_VEHICLE_CONTROL,  VC_BUS, 59, 2, 8 },
-
-    // UI_vehicleControl2 (0x3B3). The car continuously broadcasts this frame
-    // fully populated (e.g. 90 80 44 32 00 00 A8 00, dlc 8), so glovebox is
-    // sent as a read-modify-write of a live frame (see send_glovebox) rather
-    // than a fabricated one -- the dlc field is unused (the live frame's dlc
-    // is kept).
-    { VC_CMD_GLOVEBOX,             ID_UI_VEHICLE_CONTROL2, VC_BUS,  0, 1, 8 },
-
-    // UI_chargeRequest (0x333, 4 bytes). Open/close are two separate 1-bit
-    // signals at bits 0 and 1 respectively.
+    { VC_CMD_GLOVEBOX,           ID_UI_VEHICLE_CONTROL2, VC_BUS,  0, 1, 8 },
     { VC_CMD_CHARGE_PORT_OPEN,   ID_UI_CHARGE_REQUEST, VC_BUS, 0, 1, 4 },
     { VC_CMD_CHARGE_PORT_CLOSE,  ID_UI_CHARGE_REQUEST, VC_BUS, 1, 1, 4 },
-
-    // UI_hvacRequest (0x2F3, 5 bytes)
-    { VC_CMD_CLIMATE_POWER,      ID_UI_HVAC_REQUEST, VC_BUS, 26, 3, 5 },
-    { VC_CMD_CLIMATE_TEMP_LEFT,  ID_UI_HVAC_REQUEST, VC_BUS,  0, 5, 5 },
-    { VC_CMD_CLIMATE_TEMP_RIGHT, ID_UI_HVAC_REQUEST, VC_BUS,  8, 5, 5 },
-    { VC_CMD_CLIMATE_DEFROST,    ID_UI_HVAC_REQUEST, VC_BUS, 24, 2, 5 },
-    { VC_CMD_CLIMATE_AC,         ID_UI_HVAC_REQUEST, VC_BUS, 22, 2, 5 },
 };
 
 #define VC_COMMAND_COUNT  (sizeof(s_commands) / sizeof(s_commands[0]))
@@ -135,9 +108,7 @@ static void send_command(const vc_command_t *cmd, uint16_t value)
 }
 
 // Read-modify-write: copy the most recent live frame for this command's id,
-// change only its signal, and transmit once. Keeps every other signal in the
-// shared message at the car's own values. Returns false if no live frame has
-// been cached yet (bus quiet / car asleep).
+// change only its signal, and transmit once.
 static bool rmw_send_once(const vc_command_t *cmd, uint16_t value)
 {
     can_frame_t frame;
