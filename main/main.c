@@ -4,6 +4,8 @@
 #include "can_manager.h"
 #include "can_filter.h"
 #include "wiper_off.h"
+#include "battery_preheat.h"
+#include "vehicle_control.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
@@ -154,6 +156,12 @@ void app_main(void)
 
     // Auto wiper-off automation
     ESP_ERROR_CHECK(wiper_off_init());
+
+    // Battery preheat injector (faked UI_tripPlanning), toggled over BLE
+    ESP_ERROR_CHECK(battery_preheat_init());
+
+    // Vehicle control commands (BLE -> Tesla UI_* control frames)
+    ESP_ERROR_CHECK(vehicle_control_init());
 
     // CAN interface 0 (MCP2518FD)
     mcp251xfd_config_t can0_cfg = {
