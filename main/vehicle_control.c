@@ -2,8 +2,10 @@
 #include "can_interface.h"
 #include "can_manager.h"
 #include "battery_preheat.h"
+#include "three_finger.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -34,6 +36,12 @@ static const char *TAG = "veh_ctrl";
 #define VC_GLOVEBOX_BURST    5
 #define VC_GLOVEBOX_GAP_MS   10
 
+// Minimum spacing between glovebox opens. The car's glovebox controller
+// rate-limits/locks the latch after repeated rapid actuations (a car-side
+// anti-abuse protection), so we refuse opens that arrive too close together.
+// This throttles both the three-finger gesture and the manual app button.
+#define VC_GLOVEBOX_MIN_INTERVAL_MS  3000
+
 typedef struct {
     uint8_t  opcode;
     uint32_t can_id;
@@ -62,6 +70,9 @@ typedef struct {
 } vc_request_t;
 
 static QueueHandle_t s_queue = NULL;
+
+// Timestamp (us) of the last glovebox open, for the rate-limit guard above.
+static int64_t s_glovebox_last_us = 0;
 
 // Pack `length` bits of `value` into `data` starting at `start_bit`, using DBC
 // Intel (little-endian) bit order: bit `start_bit` receives the LSB of value.
@@ -120,21 +131,41 @@ static bool rmw_send_once(const vc_command_t *cmd, uint16_t value)
     return true;
 }
 
-// Glovebox: momentary press -> fire a short fast burst of the request bit.
+// Glovebox: emulate a momentary press as a clean 0->1->0 pulse. The request is
+// edge-triggered in the car, so we must drive it back to 0 after asserting;
+// leaving it latched at 1 blocks the next open (including from the
+// infotainment) until the car happens to rebroadcast a 0.
 static void send_glovebox(const vc_command_t *cmd, uint16_t value)
 {
+    // Throttle: refuse opens that arrive too close together, so neither the
+    // gesture nor button-mashing can drive the car into its glovebox lockout.
+    int64_t now = esp_timer_get_time();
+    if (s_glovebox_last_us != 0 &&
+        now - s_glovebox_last_us < (int64_t)VC_GLOVEBOX_MIN_INTERVAL_MS * 1000) {
+        ESP_LOGW(TAG, "glovebox throttled: %lld ms since last open (min %d ms)",
+                 (long long)((now - s_glovebox_last_us) / 1000),
+                 VC_GLOVEBOX_MIN_INTERVAL_MS);
+        return;
+    }
+
     bool ok = false;
     for (int i = 0; i < VC_GLOVEBOX_BURST; i++) {
         ok = rmw_send_once(cmd, value);
         if (!ok) break;
         vTaskDelay(pdMS_TO_TICKS(VC_GLOVEBOX_GAP_MS));
     }
-    if (ok) {
-        ESP_LOGI(TAG, "glovebox burst sent (val=%u)", value);
-    } else {
+    if (!ok) {
         ESP_LOGW(TAG, "glovebox: no live 0x%03lX frame yet, skipping",
                  (unsigned long)cmd->can_id);
+        return;
     }
+    s_glovebox_last_us = now;
+    // Release: drive the request back to 0 so the line isn't left asserted.
+    for (int i = 0; i < VC_GLOVEBOX_BURST; i++) {
+        if (!rmw_send_once(cmd, 0)) break;
+        vTaskDelay(pdMS_TO_TICKS(VC_GLOVEBOX_GAP_MS));
+    }
+    ESP_LOGI(TAG, "glovebox pulse sent (val=%u then released)", value);
 }
 
 static void vehicle_control_task(void *arg)
@@ -146,6 +177,11 @@ static void vehicle_control_task(void *arg)
             if (req.opcode == VC_CMD_BATTERY_PREHEAT) {
                 // Not a single-shot CAN frame: toggles continuous injection.
                 battery_preheat_set(req.value != 0);
+                continue;
+            }
+            if (req.opcode == VC_CMD_THREE_FINGER_ACTION) {
+                // Not a CAN frame: binds the three-finger tap to an action.
+                three_finger_set_action((uint8_t)req.value);
                 continue;
             }
             const vc_command_t *cmd = find_command(req.opcode);
@@ -178,7 +214,9 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
     if (!s_queue) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (opcode != VC_CMD_BATTERY_PREHEAT && !find_command(opcode)) {
+    if (opcode != VC_CMD_BATTERY_PREHEAT &&
+        opcode != VC_CMD_THREE_FINGER_ACTION &&
+        !find_command(opcode)) {
         ESP_LOGW(TAG, "reject unknown opcode 0x%02X", opcode);
         return ESP_ERR_INVALID_ARG;
     }

@@ -1,6 +1,7 @@
 #include "can_manager.h"
 #include "can_filter.h"
 #include "wiper_off.h"
+#include "three_finger.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -55,8 +56,9 @@ static void on_frame_received(const can_tagged_frame_t *frame, void *user_ctx)
 {
     (void)user_ctx;
     if (!s_rx_queue) return;
-    // Injection observer runs before the BLE filter so it sees all raw traffic.
+    // Injection observers run before the BLE filter so they see all raw traffic.
     wiper_off_observe(frame);
+    three_finger_observe(frame);
     frame_cache_update(frame);
     // Drop non-matching frames at the source so the bridge task's batching
     // timeout reflects "no more *matching* frames" rather than "no more
