@@ -15,28 +15,13 @@ static const char *TAG = "three_finger";
 #define TOUCH_POINTS_BYTE   3
 #define THREE_FINGERS       3
 
-// After firing, ignore further taps for this long. The glovebox/preheat
-// requests are edge-triggered in the car, so firing more than once per gesture
-// holds the request asserted and blocks the next open (even from the
-// infotainment) until it clears. A short lockout makes one tap fire once.
+// After firing, ignore further taps for this long.
 #define REFIRE_LOCKOUT_US   (1500 * 1000)
 
-// Bound action (THREE_FINGER_ACTION_*). Written from the BLE control task,
-// read from the CAN RX task; single byte access is atomic on the ESP32.
 static volatile uint8_t s_action = THREE_FINGER_ACTION_NONE;
-
-// Local mirror fold state, toggled by the gesture. The firmware can't read the
-// real mirror position, so we assume unfolded at boot and flip on each tap.
 static volatile bool s_mirrors_folded = false;
-
-// Gesture state. We arm on a full release (zero fingers) and fire once when the
-// count first reaches three, then disarm. This fires exactly once per physical
-// press even though the live touch count jitters (e.g. 3->2->3) while held.
 static volatile bool    s_armed = true;
 static volatile int64_t s_last_fire_us = 0;
-
-// Last logged touch-point count, so we only log when it changes (UI_status2 is
-// broadcast cyclically; logging every frame would flood the console).
 static volatile uint8_t s_last_logged_points = 0xFF;
 
 void three_finger_set_action(uint8_t action)
