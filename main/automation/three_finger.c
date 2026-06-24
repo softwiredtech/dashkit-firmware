@@ -7,7 +7,6 @@
 
 static const char *TAG = "three_finger";
 
-// Vehicle (body) CAN bus, same one the UI_* messages live on.
 #define BUS                 1
 // UI_status2 (991 / 0x3DF, 8 bytes). UI_activeTouchPoints is an 8-bit Intel
 // signal at start bit 24, i.e. data byte 3: the number of fingers currently
@@ -48,8 +47,6 @@ void three_finger_set_action(uint8_t action)
     s_action = action;
 }
 
-// Run the bound action. Heavy work (CAN bursts) is deferred to the vehicle
-// control task via vehicle_control_submit, so this stays cheap on the RX path.
 static void fire_action(uint8_t action)
 {
     switch (action) {
@@ -58,13 +55,11 @@ static void fire_action(uint8_t action)
         vehicle_control_submit(VC_CMD_GLOVEBOX, 1);
         break;
     case THREE_FINGER_ACTION_PREHEAT:
-        // Toggle so a tap both starts and stops the fake preheat injection.
         ESP_LOGI(TAG, "3-finger tap -> battery preheat toggle");
         vehicle_control_submit(VC_CMD_BATTERY_PREHEAT,
                                battery_preheat_enabled() ? 0 : 1);
         break;
     case THREE_FINGER_ACTION_MIRROR_FOLD:
-        // Toggle fold/unfold; UI_mirrorFoldRequest 1=fold(RETRACT) 2=unfold.
         s_mirrors_folded = !s_mirrors_folded;
         ESP_LOGI(TAG, "3-finger tap -> mirrors %s",
                  s_mirrors_folded ? "fold" : "unfold");
@@ -90,8 +85,7 @@ void three_finger_observe(const can_tagged_frame_t *frame)
         s_last_logged_points = points;
     }
 
-    // Re-arm only once every finger has lifted, so the jittery touch count
-    // during a single held press can't re-trigger the action.
+    // Re-arm only once every finger has lifted
     if (points == 0) {
         if (!s_armed) {
             ESP_LOGI(TAG, "all fingers lifted, re-armed");

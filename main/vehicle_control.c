@@ -14,8 +14,6 @@
 
 static const char *TAG = "veh_ctrl";
 
-// Vehicle (body) CAN bus. The Tesla UI_* control messages live on the same
-// bus DashKit's CAN1 is wired to (matches bus_1_tesla_vehicle.dbc).
 #define VC_BUS  1
 
 // Tesla CAN message IDs (standard 11-bit).
@@ -23,23 +21,15 @@ static const char *TAG = "veh_ctrl";
 #define ID_UI_VEHICLE_CONTROL2  0x3B3  // 947  UI_vehicleControl2
 #define ID_UI_CHARGE_REQUEST    0x333  // 819  UI_chargeRequest
 
-// How aggressively to push each command onto the bus. Momentary requests
-// (lock, frunk, horn) need the receiving ECU to observe the value for a
-// moment; latched values only need a few frames. A short burst covers both
-// without us having to sustain the message cyclically.
+// How aggressively to push each command onto the bus.
 #define VC_BURST_REPEATS   10
 #define VC_BURST_GAP_MS    20
 
-// Glovebox is delivered as a read-modify-write of the live UI_vehicleControl2
-// frame (see send_glovebox): grab a real frame, flip only the request bit, and
-// fire a short fast burst that mimics a momentary touchscreen press.
+// Glovebox is delivered as a read-modify-write of the live UI_vehicleControl2 frame
 #define VC_GLOVEBOX_BURST    5
 #define VC_GLOVEBOX_GAP_MS   10
 
-// Minimum spacing between glovebox opens. The car's glovebox controller
-// rate-limits/locks the latch after repeated rapid actuations (a car-side
-// anti-abuse protection), so we refuse opens that arrive too close together.
-// This throttles both the three-finger gesture and the manual app button.
+// Minimum spacing between glovebox opens.
 #define VC_GLOVEBOX_MIN_INTERVAL_MS  3000
 
 typedef struct {
