@@ -2,20 +2,22 @@ idf_component_register(
     SRCS
         "main.c"
         "led.c"
-        "mcp251xfd.c"
-        "can_manager.c"
-        "can_filter.c"
+        "can/mcp251xfd.c"
+        "can/can_manager.c"
+        "can/can_filter.c"
+        "can/can_sim.c"
         "controls/vehicle_control.c"
         "controls/battery_preheat.c"
         "automation/wiper_off.c"
         "automation/multi_finger.c"
-        "can_sim.c"
-        "ble_server.c"
-        "ble_ota.c"
+        "ble/ble_server.c"
+        "ble/ble_ota.c"
     INCLUDE_DIRS
         "."
+        "can"
         "controls"
         "automation"
+        "ble"
         "debug"
     REQUIRES
         driver
