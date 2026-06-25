@@ -5,15 +5,16 @@ idf_component_register(
         "mcp251xfd.c"
         "can_manager.c"
         "can_filter.c"
-        "vehicle_control.c"
+        "controls/vehicle_control.c"
+        "controls/battery_preheat.c"
         "automation/wiper_off.c"
-        "automation/battery_preheat.c"
         "automation/multi_finger.c"
         "can_sim.c"
         "ble_server.c"
         "ble_ota.c"
     INCLUDE_DIRS
         "."
+        "controls"
         "automation"
         "debug"
     REQUIRES
