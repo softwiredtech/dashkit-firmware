@@ -8,7 +8,7 @@ idf_component_register(
         "vehicle_control.c"
         "automation/wiper_off.c"
         "automation/battery_preheat.c"
-        "automation/three_finger.c"
+        "automation/multi_finger.c"
         "can_sim.c"
         "ble_server.c"
         "ble_ota.c"

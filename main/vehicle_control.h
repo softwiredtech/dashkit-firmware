@@ -23,11 +23,14 @@ typedef enum {
     // --- Battery preheat (faked UI_tripPlanning 0x082 injection) ---
     VC_CMD_BATTERY_PREHEAT   = 0x35,  // 1=start faking preheat, 0=stop
 
-    // --- Infotainment three-finger tap binding ---
-    // Not a CAN frame: configures which action the firmware runs when it sees
-    // a three-finger tap on UI_status2.UI_activeTouchPoints. value =
-    // three_finger_action_t (0=none, 1=glovebox, 2=preheat).
-    VC_CMD_THREE_FINGER_ACTION = 0x40,
+    // --- Infotainment multi-finger tap binding ---
+    // Not a CAN frame: configures which action the firmware runs when it sees an
+    // N-finger tap on UI_status2.UI_activeTouchPoints. The 16-bit value packs the
+    // finger count (3..5) in the high byte and the action in the low byte:
+    //   value = (fingers << 8) | multi_finger_action_t
+    // action: 0=none 1=glovebox 2=preheat 3=mirror_fold 4=frunk 5=trunk
+    //         6=charge_port.
+    VC_CMD_MULTI_FINGER_ACTION = 0x40,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.
