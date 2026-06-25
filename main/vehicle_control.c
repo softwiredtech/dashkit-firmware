@@ -5,7 +5,6 @@
 #include "three_finger.h"
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -28,9 +27,6 @@ static const char *TAG = "veh_ctrl";
 // Glovebox is delivered as a read-modify-write of the live UI_vehicleControl2 frame
 #define VC_GLOVEBOX_BURST    5
 #define VC_GLOVEBOX_GAP_MS   10
-
-// Minimum spacing between glovebox opens.
-#define VC_GLOVEBOX_MIN_INTERVAL_MS  3000
 
 typedef struct {
     uint8_t  opcode;
@@ -60,9 +56,6 @@ typedef struct {
 } vc_request_t;
 
 static QueueHandle_t s_queue = NULL;
-
-// Timestamp (us) of the last glovebox open, for the rate-limit guard above.
-static int64_t s_glovebox_last_us = 0;
 
 // Pack `length` bits of `value` into `data` starting at `start_bit`, using DBC
 // Intel (little-endian) bit order: bit `start_bit` receives the LSB of value.
@@ -127,17 +120,6 @@ static bool rmw_send_once(const vc_command_t *cmd, uint16_t value)
 // infotainment) until the car happens to rebroadcast a 0.
 static void send_glovebox(const vc_command_t *cmd, uint16_t value)
 {
-    // Throttle: refuse opens that arrive too close together, so neither the
-    // gesture nor button-mashing can drive the car into its glovebox lockout.
-    int64_t now = esp_timer_get_time();
-    if (s_glovebox_last_us != 0 &&
-        now - s_glovebox_last_us < (int64_t)VC_GLOVEBOX_MIN_INTERVAL_MS * 1000) {
-        ESP_LOGW(TAG, "glovebox throttled: %lld ms since last open (min %d ms)",
-                 (long long)((now - s_glovebox_last_us) / 1000),
-                 VC_GLOVEBOX_MIN_INTERVAL_MS);
-        return;
-    }
-
     bool ok = false;
     for (int i = 0; i < VC_GLOVEBOX_BURST; i++) {
         ok = rmw_send_once(cmd, value);
@@ -149,7 +131,6 @@ static void send_glovebox(const vc_command_t *cmd, uint16_t value)
                  (unsigned long)cmd->can_id);
         return;
     }
-    s_glovebox_last_us = now;
     // Release: drive the request back to 0 so the line isn't left asserted.
     for (int i = 0; i < VC_GLOVEBOX_BURST; i++) {
         if (!rmw_send_once(cmd, 0)) break;
