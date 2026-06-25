@@ -5,7 +5,7 @@
 #include "can_filter.h"
 #include "wiper_off.h"
 #include "battery_preheat.h"
-#include "three_finger.h"
+#include "multi_finger.h"
 #include "vehicle_control.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
@@ -161,8 +161,8 @@ void app_main(void)
     // Battery preheat injector (faked UI_tripPlanning), toggled over BLE
     ESP_ERROR_CHECK(battery_preheat_init());
 
-    // Three-finger infotainment tap -> bound action (set over BLE)
-    ESP_ERROR_CHECK(three_finger_init());
+    // Multi-finger infotainment tap -> bound action (set over BLE)
+    ESP_ERROR_CHECK(multi_finger_init());
 
     // Vehicle control commands (BLE -> Tesla UI_* control frames)
     ESP_ERROR_CHECK(vehicle_control_init());

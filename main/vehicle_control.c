@@ -2,7 +2,7 @@
 #include "can_interface.h"
 #include "can_manager.h"
 #include "battery_preheat.h"
-#include "three_finger.h"
+#include "multi_finger.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -150,9 +150,11 @@ static void vehicle_control_task(void *arg)
                 battery_preheat_set(req.value != 0);
                 continue;
             }
-            if (req.opcode == VC_CMD_THREE_FINGER_ACTION) {
-                // Not a CAN frame: binds the three-finger tap to an action.
-                three_finger_set_action((uint8_t)req.value);
+            if (req.opcode == VC_CMD_MULTI_FINGER_ACTION) {
+                // Not a CAN frame: binds an N-finger tap to an action. The value
+                // packs the finger count in the high byte and action in the low.
+                multi_finger_set_action((uint8_t)(req.value >> 8),
+                                        (uint8_t)(req.value & 0xFF));
                 continue;
             }
             const vc_command_t *cmd = find_command(req.opcode);
@@ -186,7 +188,7 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
         return ESP_ERR_INVALID_STATE;
     }
     if (opcode != VC_CMD_BATTERY_PREHEAT &&
-        opcode != VC_CMD_THREE_FINGER_ACTION &&
+        opcode != VC_CMD_MULTI_FINGER_ACTION &&
         !find_command(opcode)) {
         ESP_LOGW(TAG, "reject unknown opcode 0x%02X", opcode);
         return ESP_ERR_INVALID_ARG;
