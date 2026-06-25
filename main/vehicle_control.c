@@ -2,6 +2,7 @@
 #include "can_interface.h"
 #include "can_manager.h"
 #include "battery_preheat.h"
+#include "three_finger.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -12,8 +13,6 @@
 
 static const char *TAG = "veh_ctrl";
 
-// Vehicle (body) CAN bus. The Tesla UI_* control messages live on the same
-// bus DashKit's CAN1 is wired to (matches bus_1_tesla_vehicle.dbc).
 #define VC_BUS  1
 
 // Tesla CAN message IDs (standard 11-bit).
@@ -21,16 +20,11 @@ static const char *TAG = "veh_ctrl";
 #define ID_UI_VEHICLE_CONTROL2  0x3B3  // 947  UI_vehicleControl2
 #define ID_UI_CHARGE_REQUEST    0x333  // 819  UI_chargeRequest
 
-// How aggressively to push each command onto the bus. Momentary requests
-// (lock, frunk, horn) need the receiving ECU to observe the value for a
-// moment; latched values only need a few frames. A short burst covers both
-// without us having to sustain the message cyclically.
+// How aggressively to push each command onto the bus.
 #define VC_BURST_REPEATS   10
 #define VC_BURST_GAP_MS    20
 
-// Glovebox is delivered as a read-modify-write of the live UI_vehicleControl2
-// frame (see send_glovebox): grab a real frame, flip only the request bit, and
-// fire a short fast burst that mimics a momentary touchscreen press.
+// Glovebox is delivered as a read-modify-write of the live UI_vehicleControl2 frame
 #define VC_GLOVEBOX_BURST    5
 #define VC_GLOVEBOX_GAP_MS   10
 
@@ -120,7 +114,10 @@ static bool rmw_send_once(const vc_command_t *cmd, uint16_t value)
     return true;
 }
 
-// Glovebox: momentary press -> fire a short fast burst of the request bit.
+// Glovebox: emulate a momentary press as a clean 0->1->0 pulse. The request is
+// edge-triggered in the car, so we must drive it back to 0 after asserting;
+// leaving it latched at 1 blocks the next open (including from the
+// infotainment) until the car happens to rebroadcast a 0.
 static void send_glovebox(const vc_command_t *cmd, uint16_t value)
 {
     bool ok = false;
@@ -129,12 +126,17 @@ static void send_glovebox(const vc_command_t *cmd, uint16_t value)
         if (!ok) break;
         vTaskDelay(pdMS_TO_TICKS(VC_GLOVEBOX_GAP_MS));
     }
-    if (ok) {
-        ESP_LOGI(TAG, "glovebox burst sent (val=%u)", value);
-    } else {
+    if (!ok) {
         ESP_LOGW(TAG, "glovebox: no live 0x%03lX frame yet, skipping",
                  (unsigned long)cmd->can_id);
+        return;
     }
+    // Release: drive the request back to 0 so the line isn't left asserted.
+    for (int i = 0; i < VC_GLOVEBOX_BURST; i++) {
+        if (!rmw_send_once(cmd, 0)) break;
+        vTaskDelay(pdMS_TO_TICKS(VC_GLOVEBOX_GAP_MS));
+    }
+    ESP_LOGI(TAG, "glovebox pulse sent (val=%u then released)", value);
 }
 
 static void vehicle_control_task(void *arg)
@@ -146,6 +148,11 @@ static void vehicle_control_task(void *arg)
             if (req.opcode == VC_CMD_BATTERY_PREHEAT) {
                 // Not a single-shot CAN frame: toggles continuous injection.
                 battery_preheat_set(req.value != 0);
+                continue;
+            }
+            if (req.opcode == VC_CMD_THREE_FINGER_ACTION) {
+                // Not a CAN frame: binds the three-finger tap to an action.
+                three_finger_set_action((uint8_t)req.value);
                 continue;
             }
             const vc_command_t *cmd = find_command(req.opcode);
@@ -178,7 +185,9 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
     if (!s_queue) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (opcode != VC_CMD_BATTERY_PREHEAT && !find_command(opcode)) {
+    if (opcode != VC_CMD_BATTERY_PREHEAT &&
+        opcode != VC_CMD_THREE_FINGER_ACTION &&
+        !find_command(opcode)) {
         ESP_LOGW(TAG, "reject unknown opcode 0x%02X", opcode);
         return ESP_ERR_INVALID_ARG;
     }
