@@ -4,8 +4,14 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "nvs.h"
 
 static const char *TAG = "three_finger";
+
+// Persist the bound action so it survives a reboot/power-cycle even before the
+// Android app reconnects and re-syncs it.
+#define NVS_NAMESPACE  "three_finger"
+#define NVS_KEY_ACTION "action"
 
 #define BUS                 1
 // UI_status2 (991 / 0x3DF, 8 bytes). UI_activeTouchPoints is an 8-bit Intel
@@ -24,10 +30,44 @@ static volatile bool    s_armed = true;
 static volatile int64_t s_last_fire_us = 0;
 static volatile uint8_t s_last_logged_points = 0xFF;
 
+static void save_action(uint8_t action)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_open failed: %s", esp_err_to_name(err));
+        return;
+    }
+    err = nvs_set_u8(nvs, NVS_KEY_ACTION, action);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "failed to persist action: %s", esp_err_to_name(err));
+    }
+    nvs_close(nvs);
+}
+
+static uint8_t load_action(void)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs);
+    if (err != ESP_OK) {
+        return THREE_FINGER_ACTION_NONE;
+    }
+    uint8_t action = THREE_FINGER_ACTION_NONE;
+    nvs_get_u8(nvs, NVS_KEY_ACTION, &action);
+    nvs_close(nvs);
+    return action;
+}
+
 void three_finger_set_action(uint8_t action)
 {
     if (action != s_action) {
         ESP_LOGW(TAG, "three-finger action set to %u", action);
+        s_action = action;
+        save_action(action);
+        return;
     }
     s_action = action;
 }
@@ -101,11 +141,11 @@ void three_finger_observe(const can_tagged_frame_t *frame)
 
 esp_err_t three_finger_init(void)
 {
-    s_action = THREE_FINGER_ACTION_NONE;
+    s_action = load_action();
     s_armed = true;
     s_last_fire_us = 0;
     s_last_logged_points = 0xFF;
-    ESP_LOGI(TAG, "three-finger automation initialized (bus %d id 0x%03X)",
-             BUS, UI_STATUS2_ID);
+    ESP_LOGI(TAG, "three-finger automation initialized (bus %d id 0x%03X, action %u)",
+             BUS, UI_STATUS2_ID, s_action);
     return ESP_OK;
 }
