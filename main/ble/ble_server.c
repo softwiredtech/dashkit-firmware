@@ -6,6 +6,7 @@
 #include "vehicle_control.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
@@ -55,14 +56,116 @@ static const ble_uuid128_t s_control_uuid = BLE_UUID128_INIT(
     0xE0, 0xB1, 0x00, 0xCA, 0x04, 0x00, 0xDA, 0xCA
 );
 
-static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-static uint16_t s_chr_val_handle;
-static bool     s_notifications_enabled = false;
+// Up to CONFIG_BT_NIMBLE_MAX_CONNECTIONS phones may be connected at once. Each
+// live connection gets a slot tracking its handle, whether it subscribed to
+// CAN notifications, and the bond count observed when it connected (used to
+// detect a freshly-created bond at encryption time).
+#define MAX_CONNS  CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+
+typedef struct {
+    uint16_t conn_handle;        // BLE_HS_CONN_HANDLE_NONE when the slot is free
+    bool     subscribed;         // notifications enabled on this connection
+    int      bonds_at_connect;   // stored-bond count snapshot at CONNECT
+} conn_slot_t;
+
+static conn_slot_t s_conns[MAX_CONNS];
+static uint16_t    s_chr_val_handle;
+
+// Pairing mode gates the creation of NEW bonds. When false, a device that is
+// not already bonded cannot pair (its fresh bond is torn down at ENC_CHANGE,
+// and re-pair attempts by bonded peers are ignored). It is true only when no
+// bonds exist yet (first-time setup) or during a window opened on command by an
+// already-paired device.
+#define PAIRING_WINDOW_S   120
+static bool               s_pairing_mode = false;
+static esp_timer_handle_t s_pairing_timer = NULL;
 
 // ---------------------------------------------------------------------------
 // GAP event handling
 // ---------------------------------------------------------------------------
 static void start_advertising(void);
+
+// Number of bonds currently persisted in the NVS key store.
+static int bond_count(void)
+{
+    int count = 0;
+    ble_store_util_count(BLE_STORE_OBJ_TYPE_PEER_SEC, &count);
+    return count;
+}
+
+static conn_slot_t *slot_by_handle(uint16_t handle)
+{
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].conn_handle == handle) {
+            return &s_conns[i];
+        }
+    }
+    return NULL;
+}
+
+static conn_slot_t *slot_alloc(uint16_t handle)
+{
+    conn_slot_t *s = slot_by_handle(BLE_HS_CONN_HANDLE_NONE);
+    if (s) {
+        s->conn_handle = handle;
+        s->subscribed = false;
+        s->bonds_at_connect = 0;
+    }
+    return s;
+}
+
+static void slot_free(uint16_t handle)
+{
+    conn_slot_t *s = slot_by_handle(handle);
+    if (s) {
+        s->conn_handle = BLE_HS_CONN_HANDLE_NONE;
+        s->subscribed = false;
+        s->bonds_at_connect = 0;
+    }
+}
+
+static int active_conn_count(void)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+            n++;
+        }
+    }
+    return n;
+}
+
+// Timer fires when a pairing window elapses without a new device pairing.
+static void pairing_timer_cb(void *arg)
+{
+    (void)arg;
+    // Stay pairable only if there are still no bonds (first-time setup).
+    s_pairing_mode = (bond_count() == 0);
+    ESP_LOGI(TAG, "Pairing window elapsed (pairing_mode=%d)", s_pairing_mode);
+}
+
+static void open_pairing_window(void)
+{
+    if (!s_pairing_timer) {
+        const esp_timer_create_args_t args = {
+            .callback = pairing_timer_cb,
+            .name = "pair_win",
+        };
+        esp_timer_create(&args, &s_pairing_timer);
+    }
+    esp_timer_stop(s_pairing_timer);  // harmless if not running
+    esp_timer_start_once(s_pairing_timer, (uint64_t)PAIRING_WINDOW_S * 1000000ULL);
+    s_pairing_mode = true;
+    ESP_LOGI(TAG, "Pairing window opened (%d s)", PAIRING_WINDOW_S);
+}
+
+static void close_pairing_window(void)
+{
+    if (s_pairing_timer) {
+        esp_timer_stop(s_pairing_timer);
+    }
+    s_pairing_mode = (bond_count() == 0);
+}
 
 static int gap_event_handler(struct ble_gap_event *event, void *arg)
 {
@@ -70,10 +173,25 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
         if (event->connect.status == 0) {
-            s_conn_handle = event->connect.conn_handle;
-            ESP_LOGI(TAG, "Connected (handle=%d)", s_conn_handle);
+            conn_slot_t *s = slot_alloc(event->connect.conn_handle);
+            if (!s) {
+                // No free slot (all connections in use). Drop this one.
+                ESP_LOGW(TAG, "No free conn slot; dropping handle %d",
+                         event->connect.conn_handle);
+                ble_gap_terminate(event->connect.conn_handle,
+                                  BLE_ERR_REM_USER_CONN_TERM);
+                break;
+            }
+            s->bonds_at_connect = bond_count();
+            ESP_LOGI(TAG, "Connected (handle=%d, active=%d, bonds=%d)",
+                     event->connect.conn_handle, active_conn_count(),
+                     s->bonds_at_connect);
             ble_att_set_preferred_mtu(512);
-            ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
+            ble_gattc_exchange_mtu(event->connect.conn_handle, NULL, NULL);
+            // Keep advertising while a slot remains so a second device can join.
+            if (active_conn_count() < MAX_CONNS) {
+                start_advertising();
+            }
         } else {
             ESP_LOGW(TAG, "Connection failed, status=%d", event->connect.status);
             start_advertising();
@@ -81,12 +199,15 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         break;
 
     case BLE_GAP_EVENT_DISCONNECT:
-        ESP_LOGI(TAG, "Disconnected (reason=0x%x)", event->disconnect.reason);
-        s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-        s_notifications_enabled = false;
+        ESP_LOGI(TAG, "Disconnected (handle=%d, reason=0x%x)",
+                 event->disconnect.conn.conn_handle, event->disconnect.reason);
+        slot_free(event->disconnect.conn.conn_handle);
         ble_ota_on_disconnect();
-        // Drop the filter so the next client starts in pass-through mode.
-        can_filter_set(NULL, 0);
+        // Reset the shared CAN filter to pass-through only once the last client
+        // leaves, so one phone disconnecting doesn't clobber the other's filter.
+        if (active_conn_count() == 0) {
+            can_filter_set(NULL, 0);
+        }
         start_advertising();
         break;
 
@@ -96,8 +217,13 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_SUBSCRIBE:
         if (event->subscribe.attr_handle == s_chr_val_handle) {
-            s_notifications_enabled = event->subscribe.cur_notify;
-            ESP_LOGI(TAG, "Notifications %s", s_notifications_enabled ? "enabled" : "disabled");
+            conn_slot_t *s = slot_by_handle(event->subscribe.conn_handle);
+            if (s) {
+                s->subscribed = event->subscribe.cur_notify;
+                ESP_LOGI(TAG, "Notifications %s (handle=%d)",
+                         s->subscribed ? "enabled" : "disabled",
+                         event->subscribe.conn_handle);
+            }
         }
         break;
 
@@ -114,23 +240,57 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         break;
     }
 
-    case BLE_GAP_EVENT_ENC_CHANGE:
-        ESP_LOGI(TAG, "Encryption change: status=%d", event->enc_change.status);
-        if (event->enc_change.status == 0) {
-            ble_gap_set_prefered_le_phy(event->enc_change.conn_handle,
-                                        BLE_GAP_LE_PHY_2M_MASK,
-                                        BLE_GAP_LE_PHY_2M_MASK,
-                                        BLE_GAP_LE_PHY_CODED_ANY);
-        } else {
+    case BLE_GAP_EVENT_ENC_CHANGE: {
+        uint16_t ch = event->enc_change.conn_handle;
+        ESP_LOGI(TAG, "Encryption change: status=%d (handle=%d)",
+                 event->enc_change.status, ch);
+        if (event->enc_change.status != 0) {
             // Pairing failed, reboot device to get in a clean state for re-pair.
             ESP_LOGW(TAG, "Pairing failed (status=%d); rebooting to clear stale SM state",
                      event->enc_change.status);
             esp_restart();
+            break;
         }
+
+        // A bond count higher than this connection's snapshot means this peer
+        // just created a fresh bond (it wasn't bonded when it connected).
+        conn_slot_t *s = slot_by_handle(ch);
+        bool new_bond = (s != NULL) && (bond_count() > s->bonds_at_connect);
+
+        if (new_bond && !s_pairing_mode) {
+            // Unsolicited pairing: a new device bonded while we are locked down.
+            // Delete the fresh bond and drop the link before it can use the
+            // encryption-protected characteristics.
+            struct ble_gap_conn_desc desc;
+            if (ble_gap_conn_find(ch, &desc) == 0) {
+                ble_store_util_delete_peer(&desc.peer_id_addr);
+            }
+            ESP_LOGW(TAG, "Rejecting pairing (handle=%d): not in pairing mode", ch);
+            ble_gap_terminate(ch, BLE_ERR_REM_USER_CONN_TERM);
+            break;
+        }
+
+        if (new_bond) {
+            // A new device paired during an open window: close it (one device
+            // per window).
+            ESP_LOGI(TAG, "New device paired; closing pairing window");
+            close_pairing_window();
+        }
+
+        ble_gap_set_prefered_le_phy(ch, BLE_GAP_LE_PHY_2M_MASK,
+                                    BLE_GAP_LE_PHY_2M_MASK,
+                                    BLE_GAP_LE_PHY_CODED_ANY);
         break;
+    }
 
     case BLE_GAP_EVENT_REPEAT_PAIRING: {
-        // The peer is in our bond table but is pairing again. Delete our stale bond.
+        if (!s_pairing_mode) {
+            // An already-bonded peer is trying to pair again while we are locked
+            // down. Ignore it: keep the existing bond, reject the re-pair.
+            ESP_LOGW(TAG, "Repeat pairing ignored: not in pairing mode");
+            return BLE_GAP_REPEAT_PAIRING_IGNORE;
+        }
+        // In pairing mode: delete our stale bond and let the fresh pairing run.
         struct ble_gap_conn_desc desc;
         if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) {
             int drc = ble_store_util_delete_peer(&desc.peer_id_addr);
@@ -176,6 +336,23 @@ static void start_advertising(void)
     if (rc != 0 && rc != BLE_HS_EALREADY) {
         ESP_LOGE(TAG, "Advertising start failed: %d", rc);
     }
+}
+
+void ble_server_enter_pairing_mode(void)
+{
+    open_pairing_window();
+    // A new device needs a free connection slot. If every slot is occupied,
+    // drop one connection so the new device can connect within the window.
+    if (active_conn_count() >= MAX_CONNS) {
+        uint16_t h = s_conns[MAX_CONNS - 1].conn_handle;
+        if (h != BLE_HS_CONN_HANDLE_NONE) {
+            ESP_LOGI(TAG, "Pairing mode: freeing a slot by dropping handle %d", h);
+            ble_gap_terminate(h, BLE_ERR_REM_USER_CONN_TERM);
+            // The DISCONNECT handler restarts advertising.
+            return;
+        }
+    }
+    start_advertising();
 }
 
 // ---------------------------------------------------------------------------
@@ -319,8 +496,12 @@ static void on_sync(void)
 {
     // Use best available address
     ble_hs_util_ensure_addr(0);
+    // With no bonds yet we are in first-time setup: stay pairable. Once a device
+    // is bonded, lock down until a paired device opens a pairing window.
+    s_pairing_mode = (bond_count() == 0);
     start_advertising();
-    ESP_LOGI(TAG, "BLE host synced, advertising as \"%s\"", DEVICE_NAME);
+    ESP_LOGI(TAG, "BLE host synced, advertising as \"%s\" (pairing_mode=%d)",
+             DEVICE_NAME, s_pairing_mode);
 }
 
 static void on_reset(int reason)
@@ -341,6 +522,12 @@ static void nimble_host_task(void *param)
 esp_err_t ble_server_init(void)
 {
     int rc;
+
+    for (int i = 0; i < MAX_CONNS; i++) {
+        s_conns[i].conn_handle = BLE_HS_CONN_HANDLE_NONE;
+        s_conns[i].subscribed = false;
+        s_conns[i].bonds_at_connect = 0;
+    }
 
     rc = nimble_port_init();
     if (rc != ESP_OK) {
@@ -399,35 +586,55 @@ esp_err_t ble_server_start(void)
 
 esp_err_t ble_server_notify(const uint8_t *data, size_t len)
 {
-    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || !s_notifications_enabled) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
     // Pause CAN notifications during OTA to avoid BLE congestion
     if (ble_ota_is_in_progress()) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
-    if (!om) {
-        return ESP_ERR_NO_MEM;
+    bool any = false;
+    esp_err_t ret = ESP_ERR_INVALID_STATE;
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].conn_handle == BLE_HS_CONN_HANDLE_NONE ||
+            !s_conns[i].subscribed) {
+            continue;
+        }
+        // Each notify consumes its mbuf, so build a fresh one per connection.
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
+        if (!om) {
+            return ESP_ERR_NO_MEM;
+        }
+        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle,
+                                         s_chr_val_handle, om);
+        if (rc != 0) {
+            ESP_LOGW(TAG, "Notify failed (handle=%d): %d",
+                     s_conns[i].conn_handle, rc);
+            ret = ESP_FAIL;
+        } else {
+            any = true;
+        }
     }
-
-    int rc = ble_gatts_notify_custom(s_conn_handle, s_chr_val_handle, om);
-    if (rc != 0) {
-        ESP_LOGW(TAG, "Notify failed: %d", rc);
-        return ESP_FAIL;
-    }
-
-    return ESP_OK;
+    return any ? ESP_OK : ret;
 }
 
 bool ble_server_is_connected(void)
 {
-    return s_conn_handle != BLE_HS_CONN_HANDLE_NONE && s_notifications_enabled;
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].conn_handle != BLE_HS_CONN_HANDLE_NONE &&
+            s_conns[i].subscribed) {
+            return true;
+        }
+    }
+    return false;
 }
 
 uint16_t ble_server_get_conn_handle(void)
 {
-    return s_conn_handle;
+    // Returns the first active connection (used by OTA status notifications,
+    // which are driven by a single client at a time).
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+            return s_conns[i].conn_handle;
+        }
+    }
+    return BLE_HS_CONN_HANDLE_NONE;
 }
