@@ -3,6 +3,7 @@
 #include "can_manager.h"
 #include "battery_preheat.h"
 #include "multi_finger.h"
+#include "wiper_off.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -181,6 +182,11 @@ static void vehicle_control_task(void *arg)
                                         (uint8_t)(req.value & 0xFF));
                 continue;
             }
+            if (req.opcode == VC_CMD_WIPER_OFF_ENABLE) {
+                // Not a CAN frame: arms/disarms the auto wiper-off automation.
+                wiper_off_set_enabled(req.value != 0);
+                continue;
+            }
             const vc_command_t *cmd = find_command(req.opcode);
             if (!cmd) {
                 ESP_LOGW(TAG, "unknown opcode 0x%02X", req.opcode);
@@ -217,6 +223,7 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
     }
     if (opcode != VC_CMD_BATTERY_PREHEAT &&
         opcode != VC_CMD_MULTI_FINGER_ACTION &&
+        opcode != VC_CMD_WIPER_OFF_ENABLE &&
         !find_command(opcode)) {
         ESP_LOGW(TAG, "reject unknown opcode 0x%02X", opcode);
         return ESP_ERR_INVALID_ARG;

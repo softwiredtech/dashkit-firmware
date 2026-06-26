@@ -31,6 +31,11 @@ typedef enum {
     // action: 0=none 1=glovebox 2=preheat 3=mirror_fold 4=frunk 5=trunk
     //         6=charge_port.
     VC_CMD_MULTI_FINGER_ACTION = 0x40,
+
+    // --- Auto wiper-off automation toggle ---
+    // Not a CAN frame: arms/disarms the firmware's auto wiper-off automation.
+    // value: 1=enable, 0=disable. Persisted in NVS by the wiper_off module.
+    VC_CMD_WIPER_OFF_ENABLE = 0x41,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.
