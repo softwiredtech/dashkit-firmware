@@ -4,9 +4,15 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
 #include <string.h>
 
 static const char *TAG = "wiper_off";
+
+// Persist the enabled flag so it survives a reboot/power-cycle even before the
+// Android app reconnects and re-syncs it.
+#define NVS_NAMESPACE   "wiper_off"
+#define NVS_KEY_ENABLED "en"
 
 // ---- CAN IDs and bus ----
 #define BUS                       1
@@ -41,6 +47,49 @@ static void build_left_stalk(uint8_t out[3], uint8_t counter,
 // ---- State ----
 static volatile uint8_t s_last_counter = 0;
 static volatile uint8_t s_last_wiper_speed = 0xFF;  // 0xFF = unknown
+// Whether the automation is armed. Off by default (matches the Android app's
+// default); the app enables it over BLE and re-syncs on each connect.
+static volatile bool    s_enabled = false;
+
+static void save_enabled(bool enabled)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_open failed: %s", esp_err_to_name(err));
+        return;
+    }
+    err = nvs_set_u8(nvs, NVS_KEY_ENABLED, enabled ? 1 : 0);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "failed to persist enabled flag: %s", esp_err_to_name(err));
+    }
+    nvs_close(nvs);
+}
+
+static void load_enabled(void)
+{
+    nvs_handle_t nvs;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) {
+        return;  // keep default (disabled)
+    }
+    uint8_t enabled = 0;
+    if (nvs_get_u8(nvs, NVS_KEY_ENABLED, &enabled) == ESP_OK) {
+        s_enabled = (enabled != 0);
+    }
+    nvs_close(nvs);
+}
+
+void wiper_off_set_enabled(bool enabled)
+{
+    if (enabled != s_enabled) {
+        ESP_LOGW(TAG, "automation %s", enabled ? "enabled" : "disabled");
+        s_enabled = enabled;
+        save_enabled(enabled);
+    }
+}
 
 // ---- Wiper-off sequence (runs in its own task) ----
 static void wiper_off_task(void *arg)
@@ -88,10 +137,11 @@ void wiper_off_observe(const can_tagged_frame_t *frame)
         s_last_counter = frame->frame.data[1] & 0x0F;
     }
 
-    // Trigger: DAS_wiperSpeed transitions from 15 to 0
+    // Trigger: DAS_wiperSpeed transitions from 15 to 0. Keep tracking the speed
+    // even when disabled so we don't fire on a stale edge right after enabling.
     if (frame->frame.id == DAS_BODY_CONTROLS_ID && frame->frame.dlc >= 1) {
         uint8_t speed = (frame->frame.data[0] >> 4) & 0x0F;
-        if (s_last_wiper_speed == 15 && speed == 0) {
+        if (s_enabled && s_last_wiper_speed == 15 && speed == 0) {
             ESP_LOGW(TAG, "DAS_wiperSpeed 15->0, triggering");
             xTaskCreatePinnedToCore(wiper_off_task, "wiper_off",
                                     4096, NULL, 5, NULL, 0);
@@ -102,6 +152,8 @@ void wiper_off_observe(const can_tagged_frame_t *frame)
 
 esp_err_t wiper_off_init(void)
 {
-    ESP_LOGI(TAG, "auto wiper-off initialized");
+    load_enabled();
+    ESP_LOGI(TAG, "auto wiper-off initialized (%s)",
+             s_enabled ? "enabled" : "disabled");
     return ESP_OK;
 }
