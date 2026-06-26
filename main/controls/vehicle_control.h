@@ -36,6 +36,12 @@ typedef enum {
     // Not a CAN frame: arms/disarms the firmware's auto wiper-off automation.
     // value: 1=enable, 0=disable. Persisted in NVS by the wiper_off module.
     VC_CMD_WIPER_OFF_ENABLE = 0x41,
+
+    // --- Enter BLE pairing mode ---
+    // Not a CAN frame: opens a window during which one new (not-yet-bonded)
+    // device may pair. Only an already-paired device can send this (the control
+    // characteristic requires an encrypted link). value is ignored.
+    VC_CMD_ENTER_PAIRING = 0x42,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.

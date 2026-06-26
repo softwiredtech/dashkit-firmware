@@ -20,3 +20,9 @@ bool ble_server_is_connected(void);
 
 // Get the current BLE connection handle (BLE_HS_CONN_HANDLE_NONE if not connected)
 uint16_t ble_server_get_conn_handle(void);
+
+// Open a pairing window so one new (not-yet-bonded) device can pair. Called when
+// an already-paired device requests it. The window auto-closes after a timeout
+// or once a new device pairs. With no bonds yet the device is always pairable,
+// so this is only meaningful once at least one device is bonded.
+void ble_server_enter_pairing_mode(void);
