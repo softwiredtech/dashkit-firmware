@@ -1,9 +1,3 @@
-// Multi-finger infotainment gesture automation. Binds a 3/4/5-finger tap on the
-// touchscreen (UI_status2.UI_activeTouchPoints) to a vehicle-control action.
-//
-// Touch reads now go through the DBC engine (can_get); the action itself is
-// still fired via vehicle_control_submit so it shares the BLE command path.
-
 #include "automation.h"
 #include "multi_finger.h"
 #include "vehicle_control.h"
