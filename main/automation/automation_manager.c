@@ -64,8 +64,6 @@ esp_err_t automation_manager_init(void)
 
 void automation_manager_on_frame(const can_tagged_frame_t *frame)
 {
-    // Ungated: every automation sees every frame and reads whatever cached
-    // signals it cares about (the DBC engine keeps every message's latest frame).
     for (int a = 0; a < g_automation_count; a++) {
         automation_t *au = g_automations[a];
         if (au->on_frame) {

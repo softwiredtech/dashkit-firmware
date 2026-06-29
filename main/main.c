@@ -21,16 +21,7 @@
 
 static const char *TAG = "main";
 
-// Maximum CAN frames per BLE notification packet.
-// With ATT MTU 247 negotiated, payload room is ~244 bytes. Each frame is
-// 1+4+1+4+1+8 = 19 bytes in the wire format, so up to ~12 frames fit per
-// notify; allow some slack for shorter frames.
 #define BLE_BATCH_MAX_FRAMES  16
-// Maximum time to wait for a full batch before sending partial. Longer
-// timeouts coalesce more frames per notify, lowering the notify rate
-// NimBLE has to push through the connection interval. 20ms keeps UI
-// latency snappy while letting ~7 frames pack per BLE packet at the
-// realistic ~335 fps CAN load.
 #define BLE_BATCH_TIMEOUT_MS  20
 
 // Build a DashPilot-compatible BLE packet from CAN frames.
@@ -82,44 +73,21 @@ static size_t build_ble_packet(const can_tagged_frame_t *frames, int count, uint
 static void can_to_ble_task(void *arg)
 {
     (void)arg;
-    // Keep these out of the task stack: each can_tagged_frame_t is ~80 bytes
-    // (CAN FD data field), so a 16-frame batch + 512B BLE buffer is ~1.8KB
-    // of locals before any function call. Combined with NimBLE's deep call
-    // chain from ble_server_notify, that overflows even an 8KB stack under
-    // heavy load.
     static can_tagged_frame_t batch[BLE_BATCH_MAX_FRAMES];
     static uint8_t ble_buf[512];
 
     while (true) {
         int count = 0;
 
-        // Wait for at least one frame. Filtering happens at the CAN driver
-        // callback, so anything we get here is already destined for BLE.
         if (can_manager_receive(&batch[0], 100) == ESP_OK) {
             count = 1;
 
-            // Try to fill the batch, flushing as soon as matching traffic
-            // pauses for BLE_BATCH_TIMEOUT_MS.
             while (count < BLE_BATCH_MAX_FRAMES) {
                 if (can_manager_receive(&batch[count], BLE_BATCH_TIMEOUT_MS) != ESP_OK) {
                     break;
                 }
                 count++;
             }
-
-#ifdef CONFIG_DASHKIT_DEBUG_LOG
-            // Log frames to serial
-            for (int i = 0; i < count; i++) {
-                const can_tagged_frame_t *f = &batch[i];
-                uint8_t len = f->frame.dlc > 8 ? 8 : f->frame.dlc;
-                char hex[8 * 3 + 1] = {0};
-                for (int j = 0; j < len; j++) {
-                    sprintf(hex + j * 3, "%02X ", f->frame.data[j]);
-                }
-                ESP_LOGI(TAG, "CAN%d 0x%03lX [%d] %s",
-                         f->bus_id, (unsigned long)f->frame.id, len, hex);
-            }
-#endif
 
             // Send over BLE if connected
             if (ble_server_is_connected()) {
@@ -144,24 +112,17 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    // LED
     ESP_ERROR_CHECK(led_init());
-    led_set_color(LED_COLOR_BLUE);  // Blue = booting
+    led_set_color(LED_COLOR_BLUE);
 
-    // CAN manager
     ESP_ERROR_CHECK(can_manager_init());
 
-    // CAN filter (configured by BLE client; empty = forward all)
     ESP_ERROR_CHECK(can_filter_init());
 
-    // DBC signal engine (resolves message/signal name handles).
     dbc_init();
 
-    // Automation framework: inits every registered automation (wiper-off,
-    // multi-finger, battery-preheat), wires their frame subscriptions and ticks.
     ESP_ERROR_CHECK(automation_manager_init());
 
-    // Vehicle control commands (BLE -> Tesla UI_* control frames)
     ESP_ERROR_CHECK(vehicle_control_init());
 
     // CAN interface 0 (MCP2518FD)
