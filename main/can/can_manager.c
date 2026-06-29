@@ -1,7 +1,6 @@
 #include "can_manager.h"
 #include "can_filter.h"
-#include "wiper_off.h"
-#include "multi_finger.h"
+#include "automation_manager.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -23,7 +22,7 @@ static QueueHandle_t    s_rx_queue = NULL;
 // Lets a sender grab a real, fully-populated frame off the bus and re-transmit
 // it with only one signal changed (read-modify-write), instead of fabricating
 // a frame that zeroes every other signal sharing the message.
-#define FRAME_CACHE_SIZE  4
+#define FRAME_CACHE_SIZE  16
 typedef struct {
     bool        used;
     bool        valid;
@@ -56,10 +55,11 @@ static void on_frame_received(const can_tagged_frame_t *frame, void *user_ctx)
 {
     (void)user_ctx;
     if (!s_rx_queue) return;
-    // Injection observers run before the BLE filter so they see all raw traffic.
-    wiper_off_observe(frame);
-    multi_finger_observe(frame);
+    // Refresh the RMW cache first so automation on_frame handlers (which read
+    // signals via can_get) observe this frame's current contents.
     frame_cache_update(frame);
+    // Automations run before the BLE filter so they see all raw traffic.
+    automation_manager_on_frame(frame);
     // Drop non-matching frames at the source so the bridge task's batching
     // timeout reflects "no more *matching* frames" rather than "no more
     // frames at all". This avoids holding onto a matching frame while we

@@ -1,24 +1,28 @@
+// Multi-finger infotainment gesture automation. Binds a 3/4/5-finger tap on the
+// touchscreen (UI_status2.UI_activeTouchPoints) to a vehicle-control action.
+//
+// Touch reads now go through the DBC engine (can_get); the action itself is
+// still fired via vehicle_control_submit so it shares the BLE command path.
+
+#include "automation.h"
 #include "multi_finger.h"
 #include "vehicle_control.h"
 #include "battery_preheat.h"
+#include "dbc.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs.h"
+#include <stdio.h>
 
 static const char *TAG = "multi_finger";
+
+#define BUS  1
 
 // Persist the bound actions so they survive a reboot/power-cycle even before the
 // Android app reconnects and re-syncs them. One u8 key per finger count.
 #define NVS_NAMESPACE   "multi_finger"
 #define NVS_KEY_FMT     "fp%u"   // -> "fp3", "fp4", "fp5"
-
-#define BUS                 1
-// UI_status2 (991 / 0x3DF, 8 bytes). UI_activeTouchPoints is an 8-bit Intel
-// signal at start bit 24, i.e. data byte 3: the number of fingers currently
-// touching the infotainment screen.
-#define UI_STATUS2_ID       0x3DF
-#define TOUCH_POINTS_BYTE   3
 
 // Number of bindable finger counts (3, 4, 5).
 #define ACTION_SLOTS    (MULTI_FINGER_MAX_FINGERS - MULTI_FINGER_MIN_FINGERS + 1)
@@ -80,7 +84,7 @@ static void load_actions(void)
     nvs_close(nvs);
 }
 
-void multi_finger_set_action(uint8_t fingers, uint8_t action)
+static void set_action(uint8_t fingers, uint8_t action)
 {
     if (fingers < MULTI_FINGER_MIN_FINGERS || fingers > MULTI_FINGER_MAX_FINGERS) {
         ESP_LOGW(TAG, "ignoring action for unsupported finger count %u", fingers);
@@ -132,13 +136,30 @@ static void fire_action(uint8_t fingers, uint8_t action)
     }
 }
 
-void multi_finger_observe(const can_tagged_frame_t *frame)
+// ---- Automation hooks ----
+static void multi_finger_init(automation_t *self)
 {
-    if (!frame || frame->bus_id != BUS) return;
-    if (frame->frame.id != UI_STATUS2_ID) return;
-    if (frame->frame.dlc <= TOUCH_POINTS_BYTE) return;
+    (void)self;
+    for (int i = 0; i < ACTION_SLOTS; i++) {
+        s_actions[i] = MULTI_FINGER_ACTION_NONE;
+    }
+    load_actions();
+    s_max_points = 0;
+    s_last_fire_us = 0;
+    s_last_logged_points = 0xFF;
+    ESP_LOGI(TAG, "multi-finger ready (actions 3:%u 4:%u 5:%u)",
+             s_actions[0], s_actions[1], s_actions[2]);
+}
 
-    uint8_t points = frame->frame.data[TOUCH_POINTS_BYTE];
+static void multi_finger_on_frame(automation_t *self, const can_tagged_frame_t *frame)
+{
+    (void)self;
+
+    double points_d;
+    if (can_get(frame->bus_id, "UI_status2", "UI_activeTouchPoints", &points_d, false) != ESP_OK) {
+        return;
+    }
+    uint8_t points = (uint8_t)points_d;
 
     // Log every change in the touch count so the gesture can be traced live.
     if (points != s_last_logged_points) {
@@ -179,17 +200,26 @@ void multi_finger_observe(const can_tagged_frame_t *frame)
     fire_action(peak, action);
 }
 
-esp_err_t multi_finger_init(void)
+static void multi_finger_on_config(automation_t *self, uint8_t opcode, uint16_t value)
 {
-    for (int i = 0; i < ACTION_SLOTS; i++) {
-        s_actions[i] = MULTI_FINGER_ACTION_NONE;
+    (void)self;
+    if (opcode != VC_CMD_MULTI_FINGER_ACTION) {
+        return;
     }
-    load_actions();
-    s_max_points = 0;
-    s_last_fire_us = 0;
-    s_last_logged_points = 0xFF;
-    ESP_LOGI(TAG, "multi-finger automation initialized (bus %d id 0x%03X, "
-             "actions 3:%u 4:%u 5:%u)", BUS, UI_STATUS2_ID,
-             s_actions[0], s_actions[1], s_actions[2]);
-    return ESP_OK;
+    // value packs the finger count in the high byte and the action in the low.
+    set_action((uint8_t)(value >> 8), (uint8_t)(value & 0xFF));
 }
+
+static const char *const multi_finger_subs[] = {
+    "UI_status2",
+    NULL,
+};
+
+automation_t multi_finger_automation = {
+    .name           = "multi_finger",
+    .subscribe      = multi_finger_subs,
+    .tick_period_ms = 0,
+    .init           = multi_finger_init,
+    .on_frame       = multi_finger_on_frame,
+    .on_config      = multi_finger_on_config,
+};

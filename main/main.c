@@ -3,9 +3,8 @@
 #include "can_interface.h"
 #include "can_manager.h"
 #include "can_filter.h"
-#include "wiper_off.h"
-#include "battery_preheat.h"
-#include "multi_finger.h"
+#include "dbc.h"
+#include "automation_manager.h"
 #include "vehicle_control.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
@@ -155,14 +154,12 @@ void app_main(void)
     // CAN filter (configured by BLE client; empty = forward all)
     ESP_ERROR_CHECK(can_filter_init());
 
-    // Auto wiper-off automation
-    ESP_ERROR_CHECK(wiper_off_init());
+    // DBC signal engine (resolves message/signal name handles).
+    dbc_init();
 
-    // Battery preheat injector (faked UI_tripPlanning), toggled over BLE
-    ESP_ERROR_CHECK(battery_preheat_init());
-
-    // Multi-finger infotainment tap -> bound action (set over BLE)
-    ESP_ERROR_CHECK(multi_finger_init());
+    // Automation framework: inits every registered automation (wiper-off,
+    // multi-finger, battery-preheat), wires their frame subscriptions and ticks.
+    ESP_ERROR_CHECK(automation_manager_init());
 
     // Vehicle control commands (BLE -> Tesla UI_* control frames)
     ESP_ERROR_CHECK(vehicle_control_init());
