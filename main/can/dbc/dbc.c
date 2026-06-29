@@ -1,6 +1,7 @@
 #include "dbc.h"
 #include "can_manager.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 
 #include <math.h>
 #include <string.h>
@@ -10,11 +11,57 @@ static const char *TAG = "dbc";
 // Rolling counter state, one slot per message (auto-incremented on send).
 static uint32_t s_counter[DBC_MESSAGE_COUNT];
 
+// Latest-frame cache, one slot per DBC message (mirrors opendbc's CANParser
+// `vl`): every received frame whose id matches a known message is kept by
+// dbc_observe_frame, so reads (can_get) and RMW sends (can_send_live /
+// can_frame_live) need no per-message registration.
+static can_frame_t  s_cache[DBC_MESSAGE_COUNT];
+static bool         s_cache_valid[DBC_MESSAGE_COUNT];
+static portMUX_TYPE s_cache_mux = portMUX_INITIALIZER_UNLOCKED;
+
 void dbc_init(void)
 {
     memset(s_counter, 0, sizeof(s_counter));
+    memset(s_cache_valid, 0, sizeof(s_cache_valid));
     ESP_LOGI(TAG, "DBC engine ready (%d messages, %d signals)",
              DBC_MESSAGE_COUNT, DBC_SIGNAL_COUNT);
+}
+
+// Resolve the message a received frame belongs to (matched by id on its bus),
+// or DBC_MSG_INVALID if the DBC has no definition for it.
+static dbc_msg_t msg_by_frame(uint8_t bus, uint32_t id)
+{
+    for (int i = 0; i < DBC_MESSAGE_COUNT; i++) {
+        if (g_dbc_messages[i].id == id && g_dbc_messages[i].default_bus == bus) {
+            return (dbc_msg_t)i;
+        }
+    }
+    return DBC_MSG_INVALID;
+}
+
+void dbc_observe_frame(const can_tagged_frame_t *f)
+{
+    dbc_msg_t mi = msg_by_frame(f->bus_id, f->frame.id);
+    if (mi < 0) {
+        return;  // no DBC definition for this frame: nothing to cache
+    }
+    portENTER_CRITICAL(&s_cache_mux);
+    s_cache[mi] = f->frame;
+    s_cache_valid[mi] = true;
+    portEXIT_CRITICAL(&s_cache_mux);
+}
+
+// Copy the cached frame for message `mi`, or ESP_ERR_NOT_FOUND if none yet.
+static esp_err_t cache_get(dbc_msg_t mi, can_frame_t *out)
+{
+    esp_err_t err = ESP_ERR_NOT_FOUND;
+    portENTER_CRITICAL(&s_cache_mux);
+    if (s_cache_valid[mi]) {
+        *out = s_cache[mi];
+        err = ESP_OK;
+    }
+    portEXIT_CRITICAL(&s_cache_mux);
+    return err;
 }
 
 dbc_msg_t dbc_msg(const char *name)
@@ -171,7 +218,7 @@ esp_err_t can_send_live(uint8_t bus, const char *msg, const char *sig, double va
         return ESP_ERR_NOT_FOUND;
     }
     can_frame_t f;
-    if (can_manager_get_frame(bus, g_dbc_messages[mi].id, &f) != ESP_OK) {
+    if (cache_get(mi, &f) != ESP_OK) {
         return ESP_ERR_NOT_FOUND;  // no live frame to read-modify-write yet
     }
     return send_frame(bus, msg, sig, value, scaling, &f);
@@ -179,6 +226,7 @@ esp_err_t can_send_live(uint8_t bus, const char *msg, const char *sig, double va
 
 esp_err_t can_get(uint8_t bus, const char *msg, const char *sig, double *out, bool scaling)
 {
+    (void)bus;  // cache slot is keyed by message (which carries its own bus)
     if (!out) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -191,7 +239,7 @@ esp_err_t can_get(uint8_t bus, const char *msg, const char *sig, double *out, bo
         return ESP_ERR_NOT_FOUND;
     }
     can_frame_t f;
-    if (can_manager_get_frame(bus, g_dbc_messages[mi].id, &f) != ESP_OK) {
+    if (cache_get(mi, &f) != ESP_OK) {
         return ESP_ERR_NOT_FOUND;
     }
     const dbc_signal_t *s = &g_dbc_signals[si];
@@ -224,6 +272,7 @@ esp_err_t can_frame_init(const char *msg, can_frame_t *out)
 
 esp_err_t can_frame_live(uint8_t bus, const char *msg, can_frame_t *out)
 {
+    (void)bus;
     if (!out) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -231,7 +280,7 @@ esp_err_t can_frame_live(uint8_t bus, const char *msg, can_frame_t *out)
     if (mi < 0) {
         return ESP_ERR_NOT_FOUND;
     }
-    return can_manager_get_frame(bus, g_dbc_messages[mi].id, out);
+    return cache_get(mi, out);
 }
 
 esp_err_t can_frame_send(uint8_t bus, const char *msg, can_frame_t *f)
@@ -247,17 +296,9 @@ esp_err_t can_frame_send(uint8_t bus, const char *msg, can_frame_t *f)
     return can_manager_send(bus, f);
 }
 
-esp_err_t dbc_watch(uint8_t bus, const char *msg)
-{
-    dbc_msg_t mi = dbc_msg(msg);
-    if (mi < 0) {
-        return ESP_ERR_NOT_FOUND;
-    }
-    return can_manager_watch_frame(bus, g_dbc_messages[mi].id);
-}
-
 esp_err_t dbc_counter_seed_from_bus(uint8_t bus, const char *msg)
 {
+    (void)bus;
     dbc_msg_t mi = dbc_msg(msg);
     if (mi < 0) {
         return ESP_ERR_NOT_FOUND;
@@ -267,7 +308,7 @@ esp_err_t dbc_counter_seed_from_bus(uint8_t bus, const char *msg)
         return ESP_ERR_NOT_SUPPORTED;
     }
     can_frame_t f;
-    if (can_manager_get_frame(bus, m->id, &f) != ESP_OK) {
+    if (cache_get(mi, &f) != ESP_OK) {
         return ESP_ERR_NOT_FOUND;
     }
     s_counter[mi] = (uint32_t)dbc_unpack(f.data, (dbc_sig_t)m->counter_sig);

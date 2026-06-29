@@ -1,9 +1,14 @@
 #pragma once
 
 // Common interface every automation implements. The goal is "an automation is
-// one file": a feature declares a single automation_t, lists the CAN messages it
-// cares about by name, and the automation_manager drives it. No central
-// dispatcher edits, no hardcoded message ids.
+// one file": a feature declares a single automation_t and the automation_manager
+// drives it. No central dispatcher edits, no hardcoded message ids.
+//
+// The DBC engine keeps the latest frame of every generated message in its value
+// cache (like opendbc's CANParser `vl`), so an automation can read any signal it
+// wants at any time via can_get / can_frame_live. on_frame is just an ungated
+// "a frame arrived" event; on_tick is a periodic poll. There is no subscribe
+// list — read whatever you care about from the cache when called.
 //
 // To add an automation:
 //   1. New .c file defining an automation_t (e.g. `automation_t foo_automation`).
@@ -21,11 +26,6 @@ extern "C" {
 typedef struct automation {
     const char *name;
 
-    // NULL-terminated list of DBC message names this automation observes. The
-    // manager watches each (keeping the frame cache fresh) and only calls
-    // on_frame for frames whose id is in this list. May be NULL (no frames).
-    const char *const *subscribe;
-
     // If > 0, on_tick is invoked every this-many ms from the shared esp_timer
     // task (zero extra FreeRTOS tasks). on_tick MUST be non-blocking: no
     // vTaskDelay. can_send is fine (it only queues to the driver).
@@ -33,6 +33,8 @@ typedef struct automation {
 
     // Lifecycle / event hooks. All optional (may be NULL).
     void (*init)(struct automation *self);
+    // Called for EVERY received CAN frame (ungated). Read whatever cached
+    // signals you care about via can_get; the triggering frame is also passed.
     void (*on_frame)(struct automation *self, const can_tagged_frame_t *frame);
     void (*on_tick)(struct automation *self);
     void (*on_config)(struct automation *self, uint8_t opcode, uint16_t value);

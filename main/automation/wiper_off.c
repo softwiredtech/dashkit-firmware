@@ -109,7 +109,7 @@ static void wiper_off_on_frame(automation_t *self, const can_tagged_frame_t *fra
     // so we don't fire on a stale edge right after being enabled.
     double speed;
     if (can_get(frame->bus_id, "DAS_bodyControls", "DAS_wiperSpeed", &speed, false) != ESP_OK) {
-        return;  // not the DAS frame (or not cached yet)
+        return;  // DAS_bodyControls not cached yet
     }
     if (s_enabled && s_last_wiper_speed == 15 && (int)speed == 0) {
         ESP_LOGW(TAG, "DAS_wiperSpeed 15->0, triggering");
@@ -132,15 +132,8 @@ static void wiper_off_on_config(automation_t *self, uint8_t opcode, uint16_t val
     }
 }
 
-static const char *const wiper_off_subs[] = {
-    "SCCM_leftStalk",     // counter alignment (read via cache at trigger)
-    "DAS_bodyControls",   // DAS_wiperSpeed trigger
-    NULL,
-};
-
 automation_t wiper_off_automation = {
     .name           = "wiper_off",
-    .subscribe      = wiper_off_subs,
     .tick_period_ms = 0,
     .init           = wiper_off_init,
     .on_frame       = wiper_off_on_frame,

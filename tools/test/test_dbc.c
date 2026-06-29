@@ -15,11 +15,9 @@
 #include <stdio.h>
 #include <string.h>
 
-// ---- can_manager stub (records the last sent frame; serves a settable live) ----
+// ---- can_manager stub (records the last sent frame) ----
 static can_frame_t s_last_sent;
 static int         s_sent_count;
-static can_frame_t s_live;
-static bool        s_live_valid;
 
 esp_err_t can_manager_send(uint8_t bus, const can_frame_t *frame)
 {
@@ -29,27 +27,16 @@ esp_err_t can_manager_send(uint8_t bus, const can_frame_t *frame)
     return ESP_OK;
 }
 
-esp_err_t can_manager_get_frame(uint8_t bus, uint32_t id, can_frame_t *out)
-{
-    (void)bus;
-    if (!s_live_valid || s_live.id != id) return ESP_ERR_NOT_FOUND;
-    *out = s_live;
-    return ESP_OK;
-}
-
-esp_err_t can_manager_watch_frame(uint8_t bus, uint32_t id)
-{
-    (void)bus; (void)id;
-    return ESP_OK;
-}
-
+// Push a frame into the DBC value cache, exactly as the CAN RX path would.
 static void set_live(uint32_t id, uint8_t dlc, const uint8_t *data)
 {
-    memset(&s_live, 0, sizeof(s_live));
-    s_live.id = id;
-    s_live.dlc = dlc;
-    memcpy(s_live.data, data, dlc);
-    s_live_valid = true;
+    can_tagged_frame_t f;
+    memset(&f, 0, sizeof(f));
+    f.bus_id = 1;
+    f.frame.id = id;
+    f.frame.dlc = dlc;
+    memcpy(f.frame.data, data, dlc);
+    dbc_observe_frame(&f);
 }
 
 // ---- reference implementations copied verbatim from the OLD code ----
@@ -162,8 +149,7 @@ int main(void)
 
     // 8. SCCM checksum + counter match the old build_left_stalk reference.
     {
-        // No live frame: counter starts at 0, first send emits 1.
-        s_live_valid = false;
+        // SCCM not cached yet: counter starts at 0, first send emits 1.
         can_send(1, "SCCM_leftStalk", "SCCM_washWipeButtonStatus", 1, false);
         uint8_t ref[3];
         ref_build_left_stalk(ref, 1, 1);  // counter=1, wash_wipe=1

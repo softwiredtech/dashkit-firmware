@@ -210,14 +210,8 @@ static void multi_finger_on_config(automation_t *self, uint8_t opcode, uint16_t 
     set_action((uint8_t)(value >> 8), (uint8_t)(value & 0xFF));
 }
 
-static const char *const multi_finger_subs[] = {
-    "UI_status2",
-    NULL,
-};
-
 automation_t multi_finger_automation = {
     .name           = "multi_finger",
-    .subscribe      = multi_finger_subs,
     .tick_period_ms = 0,
     .init           = multi_finger_init,
     .on_frame       = multi_finger_on_frame,

@@ -178,9 +178,8 @@ esp_err_t vehicle_control_init(void)
         return ESP_ERR_NO_MEM;
     }
     xTaskCreatePinnedToCore(vehicle_control_task, "veh_ctrl", 4096, NULL, 5, NULL, 0);
-    // Glovebox and charge port replay live frames; keep snapshots of them.
-    dbc_watch(VC_BUS, "UI_vehicleControl2");
-    dbc_watch(VC_BUS, "UI_chargeRequest");
+    // Glovebox and charge port replay live frames; the DBC value cache keeps
+    // them automatically (can_send_live RMW base), so no watch needed.
     ESP_LOGI(TAG, "vehicle control initialized (%u commands)", (unsigned)VC_COMMAND_COUNT);
     return ESP_OK;
 }

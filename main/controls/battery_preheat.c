@@ -47,9 +47,8 @@ static void battery_preheat_init(automation_t *self)
 {
     (void)self;
     s_enabled = false;
-    // Keep a snapshot of the live UI_tripPlanning frame for read-modify-write
-    // (subscribe is NULL, so register the watch explicitly).
-    dbc_watch(BUS, "UI_tripPlanning");
+    // The DBC value cache keeps the live UI_tripPlanning frame automatically
+    // (used as the read-modify-write base in on_tick); no watch needed.
     ESP_LOGI(TAG, "battery preheat injector ready (disabled)");
 }
 
@@ -102,7 +101,6 @@ static void battery_preheat_on_config(automation_t *self, uint8_t opcode, uint16
 
 automation_t battery_preheat_automation = {
     .name           = "battery_preheat",
-    .subscribe      = NULL,
     .tick_period_ms = 100,
     .init           = battery_preheat_init,
     .on_tick        = battery_preheat_on_tick,

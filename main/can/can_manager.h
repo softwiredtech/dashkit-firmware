@@ -26,12 +26,3 @@ esp_err_t can_manager_inject(const can_tagged_frame_t *frame);
 // Transmit a frame on the interface with the given bus_id.
 // Returns ESP_ERR_NOT_FOUND if no interface matches bus_id.
 esp_err_t can_manager_send(uint8_t bus_id, const can_frame_t *frame);
-
-// Register (bus_id, id) so the manager keeps a snapshot of its most recent
-// frame. Call once at startup for any frame you want to read-modify-write.
-// Returns ESP_ERR_NO_MEM if the watch table is full.
-esp_err_t can_manager_watch_frame(uint8_t bus_id, uint32_t id);
-
-// Copy the most recently received frame for a watched (bus_id, id) into `out`.
-// Returns ESP_ERR_NOT_FOUND if the id isn't watched or none has arrived yet.
-esp_err_t can_manager_get_frame(uint8_t bus_id, uint32_t id, can_frame_t *out);

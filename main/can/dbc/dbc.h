@@ -53,9 +53,9 @@ int64_t dbc_phys_to_raw(dbc_sig_t sig, double phys);
 //   false -> RAW value (exact on-wire integer bits); for flags / enums / counters.
 // `double` carries both: raw integers are exact up to 2^53.
 
-// Read a signal from the can_manager frame cache. Mux-aware (returns
-// ESP_ERR_INVALID_STATE if the live frame carries a different mux). Requires the
-// message to be watched (dbc_watch / subscribe).
+// Read a signal from the DBC value cache (the latest frame seen for the
+// message). Mux-aware (returns ESP_ERR_INVALID_STATE if the live frame carries a
+// different mux). ESP_ERR_NOT_FOUND if no frame for the message has arrived yet.
 esp_err_t can_get(uint8_t bus, const char *msg, const char *sig, double *out, bool scaling);
 
 // One-shot send: zeroed frame, pack one signal (auto-writing its mux selector),
@@ -67,9 +67,12 @@ esp_err_t can_send(uint8_t bus, const char *msg, const char *sig, double value, 
 // preserved. Returns ESP_ERR_NOT_FOUND if no live frame has been received yet.
 esp_err_t can_send_live(uint8_t bus, const char *msg, const char *sig, double value, bool scaling);
 
-// Register a message id with the can_manager frame cache so it can be read
-// (can_get) or used as an RMW base (can_send_live / can_frame_live).
-esp_err_t dbc_watch(uint8_t bus, const char *msg);
+// Feed a received frame into the DBC value cache. Called by the CAN RX path for
+// every frame; frames whose id matches a generated message are kept as the
+// latest value (the basis for can_get / can_send_live / can_frame_live). Frames
+// with no DBC definition are ignored. No registration needed — like opendbc's
+// CANParser keeping `vl` for every message in the loaded DBC.
+void dbc_observe_frame(const can_tagged_frame_t *f);
 
 // Seed a message's rolling counter from the live bus frame so the next send
 // continues the car's sequence: counter is set to the last value seen, and the
