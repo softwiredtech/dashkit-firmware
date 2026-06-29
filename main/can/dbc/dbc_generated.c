@@ -171,10 +171,11 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     // ---- UI_tripPlanning (0x082) ----
     { "UI_tripPlanningActive", 0, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_navToSupercharger", 1, 1, 0, 1.0, 0.0, -1, -1 },
-    { "UI_requestActiveBatteryHeating", 2, 1, 0, 1.0, 0.0, -1, -1 },
-    { "UI_predictedEnergy", 16, 16, 1, 0.01, 0.0, -1, -1 },
-    { "UI_hindsightEnergy", 32, 16, 1, 0.01, 0.0, -1, -1 },
-    { "UI_energyAtDestination", 48, 16, 1, 0.01, 0.0, -1, -1 },
+    { "UI_navSuperchargerType", 2, 3, 0, 1.0, 0.0, -1, -1 },
+    { "UI_batteryPreconditioningState", 5, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_requestBatteryHeating", 7, 1, 0, 1.0, 0.0, -1, -1 },
+    { "UI_someValueA", 8, 8, 0, 1.0, 0.0, -1, -1 },
+    { "UI_someValueB", 16, 8, 0, 1.0, 0.0, -1, -1 },
 };
 
 const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
@@ -185,5 +186,5 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_vehicleControl", 0x273, 8, 1, 92, 39, DBC_CKSUM_NONE, -1, -1 },
     { "UI_vehicleControl2", 0x3B3, 2, 1, 131, 23, DBC_CKSUM_NONE, -1, -1 },
     { "UI_chargeRequest", 0x333, 4, 1, 154, 5, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_tripPlanning", 0x082, 8, 1, 159, 6, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_tripPlanning", 0x082, 8, 1, 159, 7, DBC_CKSUM_NONE, -1, -1 },
 };

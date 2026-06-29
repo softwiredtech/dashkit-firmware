@@ -227,12 +227,13 @@ BO_ 513 VCFRONT_logging10Hz2: 8 VEH
  SG_ VCFRONT_tempSuperheatTarget m0 : 44|10@1+ (0.1,0) [0|60] "C" X
 
 BO_ 130 UI_tripPlanning: 8 VEH
- SG_ UI_energyAtDestination : 48|16@1- (0.01,0) [-327.67|327.67] "kWh" X
- SG_ UI_hindsightEnergy : 32|16@1- (0.01,0) [-327.67|327.67] "kWh" X
- SG_ UI_navToSupercharger : 1|1@1+ (1,0) [0|1] "" X
- SG_ UI_predictedEnergy : 16|16@1- (0.01,0) [-327.67|327.67] "kWh" X
- SG_ UI_requestActiveBatteryHeating : 2|1@1+ (1,0) [0|1] "" X
  SG_ UI_tripPlanningActive : 0|1@1+ (1,0) [0|1] "" X
+ SG_ UI_navToSupercharger : 1|1@1+ (1,0) [0|1] "" X
+ SG_ UI_navSuperchargerType : 2|3@1+ (1,0) [0|7] "" X
+ SG_ UI_batteryPreconditioningState : 5|2@1+ (1,0) [0|3] "" X
+ SG_ UI_requestBatteryHeating : 7|1@1+ (1,0) [0|1] "" X
+ SG_ UI_someValueA : 8|8@1+ (1,0) [0|255] "" X
+ SG_ UI_someValueB : 16|8@1+ (1,0) [0|255] "" X
 
 BO_ 139 UI_tripPlanning2: 6 VEH
  SG_ UI_maxSpeedToReachDestination : 0|16@1+ (0.01,0) [0|655.34] "m/s" X

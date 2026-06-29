@@ -3,11 +3,7 @@
 //
 // Runs on the shared automation esp_timer (tick_period_ms = 100): NO dedicated
 // FreeRTOS task. Each tick read-modify-writes the car's live UI_tripPlanning
-// frame and forces the preheat fields.
-//
-// The magic payload spans unnamed/reserved bits the published Tesla DBC gets
-// wrong, so it is written as raw bytes via the can_frame_* helpers rather than
-// through named DBC signals.
+// frame and forces the preheat fields via named DBC signals.
 
 #include "automation.h"
 #include "battery_preheat.h"
@@ -15,7 +11,6 @@
 #include "dbc.h"
 
 #include "esp_log.h"
-#include <string.h>
 
 static const char *TAG = "bat_preheat";
 
@@ -23,17 +18,6 @@ static const char *TAG = "bat_preheat";
 
 // Log roughly every 2 s (every 20 ticks at 100ms) so the bus log isn't flooded.
 #define PREHEAT_LOG_EVERY  20
-
-// Captured from a real car auto-preheating while navigating to a Supercharger.
-// source: https://www.teslaownersonline.com/threads/diagnostic-port-and-data-access.7502/page-37
-#define PREHEAT_D0_KEEP   0x01u  // preserve bit0 (tripPlanningActive) from the car
-#define PREHEAT_D0_SET    0xAEu  // navSC=1, scType=3, precond=1, reqHeating=1
-#define PREHEAT_VAL_A     0x50u
-#define PREHEAT_VAL_B     0xC5u
-
-static const uint8_t PREHEAT_DEFAULT[8] = {
-    0xAE, 0x50, 0xC5, 0x80, 0xFF, 0x03, 0x00, 0x80,
-};
 
 static volatile bool s_enabled = false;
 
@@ -59,29 +43,34 @@ static void battery_preheat_on_tick(automation_t *self)
         return;
     }
 
-    // Prefer the car's own live frame so data[3..7] stays consistent with
-    // whatever it is broadcasting; fall back to the captured default bytes.
+    // Read-modify-write the car's own live frame so the other fields/bytes stay
+    // consistent with whatever it is broadcasting (and bit0 UI_tripPlanningActive
+    // is left untouched). The car always emits UI_tripPlanning on the bus.
     can_frame_t f;
-    bool live = (can_frame_live(BUS, "UI_tripPlanning", &f) == ESP_OK);
-    if (!live) {
-        can_frame_init("UI_tripPlanning", &f);
-        memcpy(f.data, PREHEAT_DEFAULT, sizeof(PREHEAT_DEFAULT));
+    if (can_frame_live(BUS, "UI_tripPlanning", &f) != ESP_OK) {
+        return;
     }
 
-    f.data[0] = (f.data[0] & PREHEAT_D0_KEEP) |
-                (PREHEAT_D0_SET & ~PREHEAT_D0_KEEP);
-    f.data[1] = PREHEAT_VAL_A;
-    f.data[2] = PREHEAT_VAL_B;
+    // Force the preheat fields. Values captured from a real car auto-preheating
+    // while navigating to a Supercharger (byte0 == 0xAE, byte1 == 0x50,
+    // byte2 == 0xC5). source: https://www.teslaownersonline.com/threads/diagnostic-port-and-data-access.7502/page-37
+    dbc_msg_t m = dbc_msg("UI_tripPlanning");
+    dbc_pack(f.data, dbc_sig(m, "UI_navToSupercharger"),           1);
+    dbc_pack(f.data, dbc_sig(m, "UI_navSuperchargerType"),         3);
+    dbc_pack(f.data, dbc_sig(m, "UI_batteryPreconditioningState"), 1);
+    dbc_pack(f.data, dbc_sig(m, "UI_requestBatteryHeating"),       1);
+    dbc_pack(f.data, dbc_sig(m, "UI_someValueA"),                  0x50);
+    dbc_pack(f.data, dbc_sig(m, "UI_someValueB"),                  0xC5);
 
     esp_err_t err = can_frame_send(BUS, "UI_tripPlanning", &f);
 
     static uint32_t count = 0;
     if ((count++ % PREHEAT_LOG_EVERY) == 0) {
-        ESP_LOGI(TAG, "TX 0x082 %02X %02X %02X %02X %02X %02X %02X %02X (%s, %s)",
+        ESP_LOGI(TAG, "TX 0x082 %02X %02X %02X %02X %02X %02X %02X %02X (%s)",
                  f.data[0], f.data[1], f.data[2],
                  f.data[3], f.data[4], f.data[5],
                  f.data[6], f.data[7],
-                 live ? "live" : "synth", err == ESP_OK ? "ok" : "SEND-FAIL");
+                 err == ESP_OK ? "ok" : "SEND-FAIL");
     }
 }
 
