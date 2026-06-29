@@ -1,0 +1,14 @@
+# Whitelist of Tesla DBC messages compiled into the firmware.
+# One message name per line; blank lines and lines starting with '#' ignored.
+# Only these messages (and ALL of their signals) are emitted by tools/gen_dbc.py
+# into main/can/dbc/dbc_generated.{c,h}. Keep this list tight: every message
+# costs flash. All entries must exist in dbc/bus_1_tesla_vehicle.dbc.
+
+SCCM_leftStalk        # wiper-off: left-stalk wiper button + counter/checksum
+VCLEFT_switchStatus   # wiper-off: muxed scroll-tick (swcLeftScrollTicks)
+DAS_bodyControls      # wiper-off: DAS_wiperSpeed trigger
+UI_status2            # multi-finger: UI_activeTouchPoints
+UI_vehicleControl     # vehicle control: closure / mirror fold
+UI_vehicleControl2    # vehicle control: glovebox (RMW)
+UI_chargeRequest      # vehicle control: charge port open/close (RMW)
+UI_tripPlanning       # battery preheat: faked supercharger nav (raw RMW)

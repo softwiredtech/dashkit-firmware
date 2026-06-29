@@ -1,7 +1,7 @@
 #include "can_manager.h"
 #include "can_filter.h"
-#include "wiper_off.h"
-#include "multi_finger.h"
+#include "automation_manager.h"
+#include "dbc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -19,47 +19,16 @@ static can_interface_t *s_interfaces[CAN_MANAGER_MAX_INTERFACES];
 static int              s_iface_count = 0;
 static QueueHandle_t    s_rx_queue = NULL;
 
-// Snapshot cache of the most recent frame for a small set of watched IDs.
-// Lets a sender grab a real, fully-populated frame off the bus and re-transmit
-// it with only one signal changed (read-modify-write), instead of fabricating
-// a frame that zeroes every other signal sharing the message.
-#define FRAME_CACHE_SIZE  4
-typedef struct {
-    bool        used;
-    bool        valid;
-    uint8_t     bus_id;
-    uint32_t    id;
-    can_frame_t frame;
-} frame_cache_entry_t;
-static frame_cache_entry_t s_frame_cache[FRAME_CACHE_SIZE];
-static portMUX_TYPE        s_cache_mux = portMUX_INITIALIZER_UNLOCKED;
-
-// Refresh the cache entry (if any) matching this frame's bus + id. Hot path:
-// runs in the driver RX task for every frame, so keep it to a quick scan.
-static void frame_cache_update(const can_tagged_frame_t *f)
-{
-    portENTER_CRITICAL(&s_cache_mux);
-    for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
-        if (s_frame_cache[i].used &&
-            s_frame_cache[i].bus_id == f->bus_id &&
-            s_frame_cache[i].id == f->frame.id) {
-            s_frame_cache[i].frame = f->frame;
-            s_frame_cache[i].valid = true;
-            break;
-        }
-    }
-    portEXIT_CRITICAL(&s_cache_mux);
-}
-
 // Callback invoked by CAN drivers from their RX tasks
 static void on_frame_received(const can_tagged_frame_t *frame, void *user_ctx)
 {
     (void)user_ctx;
     if (!s_rx_queue) return;
-    // Injection observers run before the BLE filter so they see all raw traffic.
-    wiper_off_observe(frame);
-    multi_finger_observe(frame);
-    frame_cache_update(frame);
+    // Feed the DBC value cache first so automation on_frame handlers (which read
+    // signals via can_get) observe this frame's current contents.
+    dbc_observe_frame(frame);
+    // Automations run before the BLE filter so they see all raw traffic.
+    automation_manager_on_frame(frame);
     // Drop non-matching frames at the source so the bridge task's batching
     // timeout reflects "no more *matching* frames" rather than "no more
     // frames at all". This avoids holding onto a matching frame while we
@@ -153,56 +122,4 @@ esp_err_t can_manager_inject(const can_tagged_frame_t *frame)
         return ESP_OK;
     }
     return ESP_ERR_NO_MEM;
-}
-
-esp_err_t can_manager_watch_frame(uint8_t bus_id, uint32_t id)
-{
-    esp_err_t err = ESP_ERR_NO_MEM;
-    portENTER_CRITICAL(&s_cache_mux);
-    for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
-        // Already watching this id: nothing to do.
-        if (s_frame_cache[i].used &&
-            s_frame_cache[i].bus_id == bus_id && s_frame_cache[i].id == id) {
-            err = ESP_OK;
-            break;
-        }
-    }
-    if (err != ESP_OK) {
-        for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
-            if (!s_frame_cache[i].used) {
-                s_frame_cache[i].used   = true;
-                s_frame_cache[i].valid  = false;
-                s_frame_cache[i].bus_id = bus_id;
-                s_frame_cache[i].id     = id;
-                err = ESP_OK;
-                break;
-            }
-        }
-    }
-    portEXIT_CRITICAL(&s_cache_mux);
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "watching frame bus=%u id=0x%03lX", bus_id, (unsigned long)id);
-    } else {
-        ESP_LOGW(TAG, "frame cache full, cannot watch id=0x%03lX", (unsigned long)id);
-    }
-    return err;
-}
-
-esp_err_t can_manager_get_frame(uint8_t bus_id, uint32_t id, can_frame_t *out)
-{
-    if (!out) return ESP_ERR_INVALID_ARG;
-    esp_err_t err = ESP_ERR_NOT_FOUND;
-    portENTER_CRITICAL(&s_cache_mux);
-    for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
-        if (s_frame_cache[i].used &&
-            s_frame_cache[i].bus_id == bus_id && s_frame_cache[i].id == id) {
-            if (s_frame_cache[i].valid) {
-                *out = s_frame_cache[i].frame;
-                err = ESP_OK;
-            }
-            break;
-        }
-    }
-    portEXIT_CRITICAL(&s_cache_mux);
-    return err;
 }
