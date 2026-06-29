@@ -9,9 +9,6 @@
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
-#ifdef DASHKIT_SIM_MODE
-#include "can_sim.h"
-#endif
 
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -184,11 +181,6 @@ void app_main(void)
 
     // Bridge task: CAN -> BLE
     xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 8192, NULL, 5, NULL, 0);
-
-#ifdef DASHKIT_SIM_MODE
-    // Simulator task: emits DashPilot's filtered Tesla message set
-    can_sim_start();
-#endif
 
     ESP_LOGI(TAG, "DashKit firmware ready");
 

@@ -5,7 +5,6 @@ idf_component_register(
         "can/mcp251xfd.c"
         "can/can_manager.c"
         "can/can_filter.c"
-        "can/can_sim.c"
         "can/dbc/dbc.c"
         "can/dbc/dbc_generated.c"
         "controls/vehicle_control.c"
@@ -23,7 +22,6 @@ idf_component_register(
         "controls"
         "automation"
         "ble"
-        "debug"
     REQUIRES
         driver
         esp_adc
