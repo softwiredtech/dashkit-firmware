@@ -10,7 +10,6 @@ idf_component_register(
         "controls/vehicle_control.c"
         "controls/battery_preheat.c"
         "automation/automation_manager.c"
-        "automation/automation_registry.c"
         "automation/wiper_off.c"
         "automation/multi_finger.c"
         "ble/ble_server.c"

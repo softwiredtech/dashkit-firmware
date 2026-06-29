@@ -8,9 +8,20 @@
 
 static const char *TAG = "auto_mgr";
 
-// The central registry (the single edit point for adding an automation).
-extern automation_t *const g_automations[];
-extern const int g_automation_count;
+// The central registry: the one place edited to add or remove an automation.
+// Each automation lives in its own .c file and defines a single automation_t;
+// list it here (and in main/CMakeLists.txt SRCS) to activate it.
+extern automation_t wiper_off_automation;
+extern automation_t multi_finger_automation;
+extern automation_t battery_preheat_automation;
+
+static automation_t *const g_automations[] = {
+    &wiper_off_automation,
+    &multi_finger_automation,
+    &battery_preheat_automation,
+};
+static const int g_automation_count =
+    (int)(sizeof(g_automations) / sizeof(g_automations[0]));
 
 #define AM_MAX_AUTOMATIONS  12
 
