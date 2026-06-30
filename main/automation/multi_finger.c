@@ -125,6 +125,10 @@ static void fire_action(uint8_t fingers, uint8_t action)
         vehicle_control_submit(s_charge_port_open ? VC_CMD_CHARGE_PORT_OPEN
                                                   : VC_CMD_CHARGE_PORT_CLOSE, 1);
         break;
+    case MULTI_FINGER_ACTION_REAR_FAN:
+        ESP_LOGI(TAG, "%u-finger tap -> rear fan toggle", fingers);
+        vehicle_control_submit(VC_CMD_REAR_FAN_TOGGLE, 0);
+        break;
     default:
         break;
     }

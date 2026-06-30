@@ -12,3 +12,4 @@ UI_vehicleControl     # vehicle control: closure / mirror fold
 UI_vehicleControl2    # vehicle control: glovebox (RMW)
 UI_chargeRequest      # vehicle control: charge port open/close (RMW)
 UI_tripPlanning       # battery preheat: faked supercharger nav (raw RMW)
+UI_hvacRequest        # rear AC fan toggle: UI_hvacReqSecondRowState (RMW)
