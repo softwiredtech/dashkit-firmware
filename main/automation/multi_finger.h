@@ -14,6 +14,7 @@ typedef enum {
     MULTI_FINGER_ACTION_FRUNK       = 4,
     MULTI_FINGER_ACTION_TRUNK       = 5,
     MULTI_FINGER_ACTION_CHARGE_PORT = 6,
+    MULTI_FINGER_ACTION_REAR_FAN    = 7,
 } multi_finger_action_t;
 
 #define MULTI_FINGER_MIN_FINGERS  3

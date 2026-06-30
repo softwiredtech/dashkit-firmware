@@ -12,21 +12,17 @@ static const char *TAG = "veh_ctrl";
 
 #define VC_BUS  1
 
-// Burst commands ride a freshly-built frame: the car edge-detects the request,
-// so we just resend the value a handful of times.
 #define VC_BURST_REPEATS   10
 #define VC_BURST_GAP_MS    20
 
-// RMW-pulse commands must ride the car's LIVE frame (an isolated frame is
-// ignored), so we read-modify-write the cached frame, holding the value for the
-// command's hold_ms, then drive it back to 0 so the line isn't left asserted.
 #define VC_RMW_GAP_MS        20
 #define VC_RMW_RELEASE_REPS   5
 
-// Each opcode maps to exactly one Tesla DBC message + signal (by name). `value`
-// from the BLE packet is the raw signal value; the DBC engine handles packing.
-// rmw=false bursts a fresh frame; rmw=true holds the value on the live frame for
-// hold_ms then releases to 0.
+#define REAR_FAN_AUTO       0
+#define REAR_FAN_OFF        1
+#define REAR_FAN_HIGH       4
+#define REAR_FAN_INJECT_MS  10
+
 typedef struct {
     uint8_t     opcode;
     const char *msg;
@@ -50,6 +46,9 @@ typedef struct {
 } vc_request_t;
 
 static QueueHandle_t s_queue = NULL;
+
+static volatile int s_rear_fan_target = -1;
+static volatile int s_rear_fan_baseline = -1;
 
 // Config opcodes are not CAN frames: they route to an automation's on_config.
 static bool is_config_opcode(uint8_t opcode)
@@ -105,6 +104,61 @@ static void send_rmw_pulse(const vc_command_t *cmd, uint16_t value)
              cmd->msg, cmd->sig, value, cmd->hold_ms);
 }
 
+static void rear_fan_toggle(void)
+{
+    if (s_rear_fan_target >= 0) {
+        ESP_LOGI(TAG, "rear fan: stop injecting (was %d)", s_rear_fan_target);
+        s_rear_fan_target = -1;
+        return;
+    }
+    double cur;
+    int target;
+    if (can_get(VC_BUS, "UI_hvacRequest", "UI_hvacReqSecondRowState", &cur, false) == ESP_OK) {
+        int s = (int)cur;
+        s_rear_fan_baseline = s;
+        target = (s == REAR_FAN_AUTO || s == REAR_FAN_OFF) ? REAR_FAN_HIGH : REAR_FAN_OFF;
+        ESP_LOGI(TAG, "rear fan: bus=%d, inject %d @ %dms", s, target, REAR_FAN_INJECT_MS);
+    } else {
+        s_rear_fan_baseline = -1;  // unknown: injector captures it on first read
+        target = REAR_FAN_HIGH;  // no live frame yet: default to turning it on
+        ESP_LOGW(TAG, "rear fan: no live frame, inject %d @ %dms", target, REAR_FAN_INJECT_MS);
+    }
+    s_rear_fan_target = target;
+}
+
+static bool rear_fan_externally_changed(void)
+{
+    double cur;
+    if (can_get(VC_BUS, "UI_hvacRequest", "UI_hvacReqSecondRowState", &cur, false) != ESP_OK) {
+        return false;
+    }
+    int v = (int)cur;
+    if (s_rear_fan_baseline < 0) {
+        s_rear_fan_baseline = v;
+        return false;
+    }
+    return v != s_rear_fan_baseline;
+}
+
+static void rear_fan_inject_task(void *arg)
+{
+    (void)arg;
+    while (true) {
+        int target = s_rear_fan_target;
+        if (target >= 0) {
+            if (rear_fan_externally_changed()) {
+                ESP_LOGI(TAG, "rear fan: bus changed from baseline %d, stop injecting",
+                         s_rear_fan_baseline);
+                s_rear_fan_target = -1;
+            } else {
+                can_send_live(VC_BUS, "UI_hvacRequest", "UI_hvacReqSecondRowState",
+                              target, false);
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(REAR_FAN_INJECT_MS));
+    }
+}
+
 static void vehicle_control_task(void *arg)
 {
     (void)arg;
@@ -115,6 +169,10 @@ static void vehicle_control_task(void *arg)
         }
         if (req.opcode == VC_CMD_ENTER_PAIRING) {
             ble_server_enter_pairing_mode();
+            continue;
+        }
+        if (req.opcode == VC_CMD_REAR_FAN_TOGGLE) {
+            rear_fan_toggle();
             continue;
         }
         if (is_config_opcode(req.opcode)) {
@@ -141,6 +199,7 @@ esp_err_t vehicle_control_init(void)
         return ESP_ERR_NO_MEM;
     }
     xTaskCreatePinnedToCore(vehicle_control_task, "veh_ctrl", 4096, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(rear_fan_inject_task, "rear_fan_inj", 4096, NULL, 5, NULL, 0);
     ESP_LOGI(TAG, "vehicle control initialized (%u commands)", (unsigned)VC_COMMAND_COUNT);
     return ESP_OK;
 }
@@ -151,6 +210,7 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
         return ESP_ERR_INVALID_STATE;
     }
     if (opcode != VC_CMD_ENTER_PAIRING &&
+        opcode != VC_CMD_REAR_FAN_TOGGLE &&
         !is_config_opcode(opcode) &&
         !find_command(opcode)) {
         ESP_LOGW(TAG, "reject unknown opcode 0x%02X", opcode);

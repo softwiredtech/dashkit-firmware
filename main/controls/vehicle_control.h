@@ -42,6 +42,9 @@ typedef enum {
     // device may pair. Only an already-paired device can send this (the control
     // characteristic requires an encrypted link). value is ignored.
     VC_CMD_ENTER_PAIRING = 0x42,
+
+    // --- Rear AC fan override toggle (UI_hvacRequest 0x2F3) ---
+    VC_CMD_REAR_FAN_TOGGLE = 0x43,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.

@@ -176,6 +176,18 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_requestBatteryHeating", 7, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_someValueA", 8, 8, 0, 1.0, 0.0, -1, -1 },
     { "UI_someValueB", 16, 8, 0, 1.0, 0.0, -1, -1 },
+    // ---- UI_hvacRequest (0x2F3) ----
+    { "UI_hvacReqTempSetpointLeft", 0, 5, 0, 0.5, 15.0, -1, -1 },
+    { "UI_hvacReqTempSetpointRight", 8, 5, 0, 0.5, 15.0, -1, -1 },
+    { "UI_hvacReqAirDistributionMode", 13, 3, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacReqBlowerSegment", 16, 4, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacReqRecirc", 20, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacReqACDisable", 22, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacReqManualDefogState", 24, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacReqUserPowerState", 26, 3, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacReqSecondRowState", 29, 3, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacUseModeledDuctTemp", 32, 1, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacReqKeepClimateOn", 33, 2, 0, 1.0, 0.0, -1, -1 },
 };
 
 const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
@@ -187,4 +199,5 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_vehicleControl2", 0x3B3, 2, 1, 131, 23, DBC_CKSUM_NONE, -1, -1 },
     { "UI_chargeRequest", 0x333, 4, 1, 154, 5, DBC_CKSUM_NONE, -1, -1 },
     { "UI_tripPlanning", 0x082, 8, 1, 159, 7, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_hvacRequest", 0x2F3, 5, 1, 166, 11, DBC_CKSUM_NONE, -1, -1 },
 };
