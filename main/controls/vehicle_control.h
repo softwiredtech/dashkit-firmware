@@ -44,11 +44,6 @@ typedef enum {
     VC_CMD_ENTER_PAIRING = 0x42,
 
     // --- Rear AC fan override toggle (UI_hvacRequest 0x2F3) ---
-    // First press: read the live UI_hvacReqSecondRowState and START continuously
-    // injecting the OPPOSITE -- HIGH(4) if the fan is AUTO/OFF, otherwise OFF(1)
-    // -- onto the live frame at 100 Hz so it out-paces the car's ~1-2 Hz frames.
-    // Second press: STOP injecting and let the car's own frames resume. value is
-    // ignored.
     VC_CMD_REAR_FAN_TOGGLE = 0x43,
 } vehicle_control_opcode_t;
 
