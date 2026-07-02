@@ -34,7 +34,7 @@ typedef struct {
 static const vc_command_t s_commands[] = {
     { VC_CMD_CLOSURE,           "UI_vehicleControl",  "UI_remoteClosureRequest",       false, 0    },
     { VC_CMD_MIRROR_FOLD,       "UI_vehicleControl",  "UI_mirrorFoldRequest",          false, 0    },
-    { VC_CMD_GLOVEBOX,          "UI_vehicleControl2", "UI_gloveboxRequest",            true,  60   },
+    { VC_CMD_GLOVEBOX,          "UI_vehicleControl2", "UI_gloveboxRequest",            true,  400  },
     { VC_CMD_CHARGE_PORT_OPEN,  "UI_chargeRequest",   "UI_openChargePortDoorRequest",  true,  1000 },
     { VC_CMD_CHARGE_PORT_CLOSE, "UI_chargeRequest",   "UI_closeChargePortDoorRequest", true,  1000 },
 };

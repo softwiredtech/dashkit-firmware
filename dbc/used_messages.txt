@@ -1,15 +1,48 @@
-# Whitelist of Tesla DBC messages compiled into the firmware.
-# One message name per line; blank lines and lines starting with '#' ignored.
-# Only these messages (and ALL of their signals) are emitted by tools/gen_dbc.py
-# into main/can/dbc/dbc_generated.{c,h}. Keep this list tight: every message
-# costs flash. All entries must exist in dbc/bus_1_tesla_vehicle.dbc.
+# Single source of truth for the CAN messages this system cares about.
+# Consumed by tools/gen_dbc.py to emit main/can/dbc/dbc_generated.{c,h}.
+#
+# Columns (whitespace separated):  NAME  BUS  ROLE
+#   BUS  = 0 (chassis / party) or 1 (vehicle) -- the physical bus the frame
+#          rides on, i.e. which MCP251xFD instance must accept it.
+#   ROLE = decode : firmware decodes this message's signals on-device (full
+#                   signal table emitted -- costs flash) AND accepts it in the
+#                   HW RX filter for its bus.
+#          filter : firmware does NOT decode it; it only opens a HW RX filter
+#                   slot so the frame reaches the DashPilot app over BLE. No
+#                   signal table is emitted (no flash cost beyond one filter).
+#
+# Every NAME must exist in dbc/bus_1_tesla_vehicle.dbc.
+# Keep decode entries tight: every decoded message costs flash. The per-bus
+# filter set (decode + filter, de-duplicated) must stay <= 32 (MCP filter slots).
+#
+# The `filter` set mirrors what the DashPilot bridge mapper reads per bus
+# (dashpilot/bridge/car/cars/tesla.h, TeslaDashKitMapper). With these accepted
+# in hardware the app no longer needs to push a CAN filter over BLE.
 
-SCCM_leftStalk        # wiper-off: left-stalk wiper button + counter/checksum
-VCLEFT_switchStatus   # wiper-off: muxed scroll-tick (swcLeftScrollTicks)
-DAS_bodyControls      # wiper-off: DAS_wiperSpeed trigger
-UI_status2            # multi-finger: UI_activeTouchPoints
-UI_vehicleControl     # vehicle control: closure / mirror fold
-UI_vehicleControl2    # vehicle control: glovebox (RMW)
-UI_chargeRequest      # vehicle control: charge port open/close (RMW)
-UI_tripPlanning       # battery preheat: faked supercharger nav (raw RMW)
-UI_hvacRequest        # rear AC fan toggle: UI_hvacReqSecondRowState (RMW)
+# ---- Firmware-decoded messages (all on the vehicle bus) ----
+SCCM_leftStalk        1 decode   # wiper-off: left-stalk wiper button + counter/checksum
+VCLEFT_switchStatus   1 decode   # wiper-off scroll-tick; also app: buckle status
+DAS_bodyControls      1 decode   # wiper-off: DAS_wiperSpeed trigger
+UI_status2            1 decode   # multi-finger: UI_activeTouchPoints
+UI_vehicleControl     1 decode   # vehicle control: closure / mirror fold
+UI_vehicleControl2    1 decode   # vehicle control: glovebox (RMW)
+UI_chargeRequest      1 decode   # vehicle control: charge port open/close (RMW)
+UI_tripPlanning       1 decode   # battery preheat: faked supercharger nav (raw RMW)
+UI_hvacRequest        1 decode   # rear AC fan toggle; also app: climate setpoint
+
+# ---- App-forwarded messages on the chassis bus (bus 0) ----
+SCCM_steeringAngleSensor  0 filter  # app: steering angle
+DI_systemStatus           0 filter  # app: gear
+DI_speed                  0 filter  # app: speed
+DAS_status                0 filter  # app: blind spot / speed limit / lane+collision warn
+DAS_status2               0 filter  # app: ADAS state (lssState)
+
+# ---- App-forwarded messages on the vehicle bus (bus 1) ----
+VCLEFT_lightStatus        1 filter  # app: left turn signal
+VCRIGHT_lightStatus       1 filter  # app: right turn signal
+VCFRONT_status            1 filter  # app: any door open
+BMS_energyStatus          1 filter  # app: pack energy
+BMS_powerAvailable        1 filter  # app: regen / discharge power
+BMS_hvBusStatus           1 filter  # app: pack voltage / current
+BMS_bmbMinMax             1 filter  # app: pack temps
+DI_odometerStatus         1 filter  # app: odometer

@@ -29,14 +29,38 @@ except ImportError:
     sys.exit(1)
 
 
-def load_whitelist(path):
-    names = []
+def load_manifest(path):
+    """Parse the annotated message manifest.
+
+    Each non-comment line is:  NAME  BUS  ROLE
+      BUS  in {0, 1}
+      ROLE in {decode, filter}
+    Returns a list of dicts {name, bus, role} in file order.
+    """
+    entries = []
     with open(path) as f:
-        for line in f:
-            line = line.split("#", 1)[0].strip()
-            if line:
-                names.append(line)
-    return names
+        for lineno, raw in enumerate(f, 1):
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) != 3:
+                sys.stderr.write(
+                    "error: %s:%d: expected 'NAME BUS ROLE', got %r\n"
+                    % (path, lineno, line))
+                sys.exit(1)
+            name, bus_s, role = parts
+            if bus_s not in ("0", "1"):
+                sys.stderr.write("error: %s:%d: bus must be 0 or 1, got %r\n"
+                                 % (path, lineno, bus_s))
+                sys.exit(1)
+            if role not in ("decode", "filter"):
+                sys.stderr.write(
+                    "error: %s:%d: role must be 'decode' or 'filter', got %r\n"
+                    % (path, lineno, role))
+                sys.exit(1)
+            entries.append({"name": name, "bus": int(bus_s), "role": role})
+    return entries
 
 
 def signal_byte_order(sig):
@@ -59,20 +83,40 @@ def c_float(x):
     return repr(float(x))
 
 
-def generate(dbc_path, whitelist_path, out_c, out_h):
+def generate(dbc_path, manifest_path, out_c, out_h):
     # strict=False: the full Tesla DBC has a few self-inconsistent messages
     # (e.g. UTC_unixTime) unrelated to our whitelist; don't let them block load.
     db = cantools.database.load_file(dbc_path, strict=False)
     by_name = {m.name: m for m in db.messages}
 
-    wanted = load_whitelist(whitelist_path)
-    messages = []
-    for name in wanted:
-        if name not in by_name:
-            sys.stderr.write("error: whitelisted message '%s' not in %s\n"
-                             % (name, dbc_path))
+    manifest = load_manifest(manifest_path)
+    for e in manifest:
+        if e["name"] not in by_name:
+            sys.stderr.write("error: message '%s' not in %s\n"
+                             % (e["name"], dbc_path))
             sys.exit(1)
-        messages.append(by_name[name])
+
+    # Only `decode` entries get full signal/message tables (flash cost). Track
+    # the annotated bus per decode message so default_bus is data-driven.
+    decode_entries = [e for e in manifest if e["role"] == "decode"]
+    messages = [by_name[e["name"]] for e in decode_entries]
+    bus_of = {e["name"]: e["bus"] for e in decode_entries}
+
+    # Per-bus HW acceptance-filter ID lists: every manifest entry (decode +
+    # filter), grouped by its bus, de-duplicated, in file order. Consumed by the
+    # MCP251xFD driver to program one exact-match filter per accepted ID.
+    NUM_BUSES = 2
+    hw_filter_ids = [[] for _ in range(NUM_BUSES)]
+    for e in manifest:
+        sid = by_name[e["name"]].frame_id & 0x7FF
+        lst = hw_filter_ids[e["bus"]]
+        if sid not in lst:
+            lst.append(sid)
+    for b, lst in enumerate(hw_filter_ids):
+        if len(lst) > 32:
+            sys.stderr.write("error: bus %d needs %d HW filters (max 32)\n"
+                             % (b, len(lst)))
+            sys.exit(1)
 
     # First pass: flatten signals (sorted by start bit) and assign global indices.
     flat_signals = []          # list of (msg, sig)
@@ -187,6 +231,17 @@ def generate(dbc_path, whitelist_path, out_c, out_h):
     h.append("extern const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT];")
     h.append("extern const dbc_signal_t  g_dbc_signals[DBC_SIGNAL_COUNT];")
     h.append("")
+    h.append("// Per-bus hardware RX acceptance-filter ID lists (11-bit standard")
+    h.append("// IDs). Index g_dbc_hw_filters[] by physical bus id (0=chassis,")
+    h.append("// 1=vehicle); program one exact-match MCP251xFD filter per id.")
+    h.append("typedef struct {")
+    h.append("    const uint16_t *ids;")
+    h.append("    uint8_t         count;")
+    h.append("} dbc_hw_filter_set_t;")
+    h.append("")
+    h.append("#define DBC_HW_FILTER_BUS_COUNT %d" % NUM_BUSES)
+    h.append("extern const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT];")
+    h.append("")
 
     # --- Emit source ---
     c = []
@@ -210,11 +265,24 @@ def generate(dbc_path, whitelist_path, out_c, out_h):
     c.append("const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {")
     for m in msg_meta:
         msg = m["msg"]
-        bus = 1  # all whitelisted Tesla vehicle-bus messages live on bus 1
+        bus = bus_of[msg.name]  # data-driven from the manifest annotation
         c.append('    { "%s", 0x%03X, %d, %d, %d, %d, %s, %d, %d },' % (
             msg.name, msg.frame_id, msg.length, bus,
             m["sig_first"], m["sig_count"],
             m["checksum_algo"], m["checksum_sig"], m["counter_sig"]))
+    c.append("};")
+    c.append("")
+
+    # Per-bus HW acceptance-filter ID arrays + the index table.
+    for b, lst in enumerate(hw_filter_ids):
+        if lst:
+            c.append("static const uint16_t hw_filter_bus%d_ids[] = {" % b)
+            c.append("    " + ", ".join("0x%03X" % i for i in lst) + ",")
+            c.append("};")
+    c.append("const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {")
+    for b, lst in enumerate(hw_filter_ids):
+        arr = ("hw_filter_bus%d_ids" % b) if lst else "0"
+        c.append("    { %s, %d }," % (arr, len(lst)))
     c.append("};")
     c.append("")
 
