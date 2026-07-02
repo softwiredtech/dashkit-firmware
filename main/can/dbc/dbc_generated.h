@@ -38,3 +38,14 @@ typedef struct {
 
 extern const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT];
 extern const dbc_signal_t  g_dbc_signals[DBC_SIGNAL_COUNT];
+
+// Per-bus hardware RX acceptance-filter ID lists (11-bit standard
+// IDs). Index g_dbc_hw_filters[] by physical bus id (0=chassis,
+// 1=vehicle); program one exact-match MCP251xFD filter per id.
+typedef struct {
+    const uint16_t *ids;
+    uint8_t         count;
+} dbc_hw_filter_set_t;
+
+#define DBC_HW_FILTER_BUS_COUNT 2
+extern const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT];

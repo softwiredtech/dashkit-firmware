@@ -201,3 +201,14 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_tripPlanning", 0x082, 8, 1, 159, 7, DBC_CKSUM_NONE, -1, -1 },
     { "UI_hvacRequest", 0x2F3, 5, 1, 166, 11, DBC_CKSUM_NONE, -1, -1 },
 };
+
+static const uint16_t hw_filter_bus0_ids[] = {
+    0x129, 0x118, 0x257, 0x399, 0x389,
+};
+static const uint16_t hw_filter_bus1_ids[] = {
+    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x082, 0x2F3, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6,
+};
+const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {
+    { hw_filter_bus0_ids, 5 },
+    { hw_filter_bus1_ids, 17 },
+};

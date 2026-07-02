@@ -1,8 +1,11 @@
 #include "mcp251xfd.h"
+#include "dbc/dbc_generated.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include <stdbool.h>
 #include <string.h>
 
 static const char *TAG = "mcp251xfd";
@@ -71,6 +74,12 @@ static const char *TAG = "mcp251xfd";
 
 // FIFO status bits
 #define FIFOSTA_TFNRFNIF    (1 << 0)   // Not empty (RX) / not full (TX)
+#define FIFOSTA_RXOVIF      (1 << 3)   // RX FIFO overflow: a frame was dropped
+                                       // because the FIFO was full (sticky; the
+                                       // app clears it by writing the bit to 0)
+
+// How often the rx_task reports the accumulated RX FIFO overflow count.
+#define RX_OVERFLOW_REPORT_US   (5 * 1000 * 1000)
 
 // OSC register bits
 #define OSC_OSCRDY          (1 << 10)
@@ -92,6 +101,13 @@ typedef struct {
     SemaphoreHandle_t   int_sem;
     SemaphoreHandle_t   spi_mutex;
     volatile bool       running;
+    // Count of RX FIFO overflow events (each = at least one dropped frame). The
+    // chip only flags that an overflow happened, not how many frames were lost.
+    // Incremented in read_rx_fifo; reported by an independent esp_timer so the
+    // log fires even when the drain loop is hogging the rx_task on a busy bus.
+    volatile uint32_t   rx_overflow_events;
+    uint32_t            rx_overflow_reported;  // last value the timer logged
+    esp_timer_handle_t  overflow_timer;
 } mcp251xfd_ctx_t;
 
 // ---------------------------------------------------------------------------
@@ -290,15 +306,25 @@ static esp_err_t configure_fifos(mcp251xfd_ctx_t *ctx)
     err = write_reg32(ctx, REG_C1FIFOCON(2), txfifo_con);
     if (err != ESP_OK) return err;
 
-    // Filter 0: Accept all frames -> FIFO 1
-    write_reg32(ctx, REG_C1FLTOBJ(0), 0x00000000);  // Match any ID
-    write_reg32(ctx, REG_C1MASK(0), 0x00000000);     // Don't care about any bits
+    // ---- Hardware acceptance filtering ----
+    const dbc_hw_filter_set_t *fs =
+        (ctx->bus_id < DBC_HW_FILTER_BUS_COUNT) ? &g_dbc_hw_filters[ctx->bus_id]
+                                                : NULL;
+    uint8_t n = fs ? fs->count : 0;
+    if (n > 32) n = 32;
 
-    // Enable filter 0, point to FIFO 1
-    // C1FLTCON0 byte 0: bit7=FLTEN, bits[4:0]=F0BP (FIFO pointer)
-    // FIFO 1 = 0x01, Enable = 0x80 → 0x81
-    uint32_t fltcon_val = 0x00000081;
-    write_reg32(ctx, REG_C1FLTCON(0), fltcon_val);
+    uint32_t fltcon_words[8] = {0};  // 32 filters / 4 per word
+    for (uint8_t i = 0; i < n; i++) {
+        write_reg32(ctx, REG_C1FLTOBJ(i), fs->ids[i]);
+        write_reg32(ctx, REG_C1MASK(i), 0x7FF);
+        fltcon_words[i / 4] |= (uint32_t)0x81u << ((i % 4) * 8);
+    }
+    for (uint8_t w = 0; (uint16_t)w * 4 < n; w++) {
+        write_reg32(ctx, REG_C1FLTCON(w), fltcon_words[w]);
+    }
+
+    ESP_LOGI(TAG, "Bus %u: %u HW RX filters programmed", (unsigned)ctx->bus_id,
+             (unsigned)n);
 
     return ESP_OK;
 }
@@ -322,6 +348,14 @@ static void read_rx_fifo(mcp251xfd_ctx_t *ctx)
         // Check FIFO 1 status
         uint32_t fifosta;
         read_reg32(ctx, REG_C1FIFOSTA(1), &fifosta);
+
+        // Overflow is sticky: a frame was dropped because the FIFO filled up.
+        // Count it and clear the flag (write 0 to RXOVIF, preserving the rest).
+        if (fifosta & FIFOSTA_RXOVIF) {
+            ctx->rx_overflow_events++;
+            write_reg32(ctx, REG_C1FIFOSTA(1), fifosta & ~FIFOSTA_RXOVIF);
+        }
+
         if (!(fifosta & FIFOSTA_TFNRFNIF)) {
             break;  // FIFO empty
         }
@@ -375,6 +409,18 @@ static void read_rx_fifo(mcp251xfd_ctx_t *ctx)
             ctx->rx_cb(&tagged, ctx->rx_cb_ctx);
         }
     }
+}
+
+// Periodic RX FIFO overflow reporter.
+static void overflow_report_cb(void *arg)
+{
+    mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)arg;
+    uint32_t total = ctx->rx_overflow_events;
+    uint32_t delta = total - ctx->rx_overflow_reported;
+    ctx->rx_overflow_reported = total;
+    ESP_LOGI(TAG, "bus%u RX FIFO overflow: %lu total (+%lu in %llds)",
+             ctx->bus_id, (unsigned long)total, (unsigned long)delta,
+             (long long)(RX_OVERFLOW_REPORT_US / 1000000));
 }
 
 static void rx_task(void *arg)
@@ -608,6 +654,18 @@ static esp_err_t iface_start(can_interface_t *self)
 
     // Create RX task
     xTaskCreatePinnedToCore(rx_task, "can_rx", 4096, ctx, 10, &ctx->rx_task_handle, 1);
+
+    // Independent periodic reporter for RX FIFO overflow drops. Runs in the
+    // esp_timer task so it fires even when the rx_task is pinned draining a busy
+    // FIFO (read_rx_fifo would otherwise starve any in-task reporting).
+    const esp_timer_create_args_t ov_args = {
+        .callback = overflow_report_cb,
+        .arg = ctx,
+        .name = "can_rxov",
+    };
+    if (esp_timer_create(&ov_args, &ctx->overflow_timer) == ESP_OK) {
+        esp_timer_start_periodic(ctx->overflow_timer, RX_OVERFLOW_REPORT_US);
+    }
 
     // Re-enter config mode to reset FIFOs after loopback tests
     set_mode(ctx, OPMODE_CONFIG);
