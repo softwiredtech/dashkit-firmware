@@ -4,6 +4,7 @@
 #include "can_manager.h"
 #include "can_interface.h"
 #include "vehicle_control.h"
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -54,6 +55,16 @@ static const ble_uuid128_t s_filter_uuid = BLE_UUID128_INIT(
 static const ble_uuid128_t s_control_uuid = BLE_UUID128_INIT(
     0xA1, 0x00, 0x01, 0xAA, 0x00, 0xC0, 0xD6, 0xB0,
     0xE0, 0xB1, 0x00, 0xCA, 0x04, 0x00, 0xDA, 0xCA
+);
+
+// Firmware version characteristic (read):
+//   CADA0005-CA00-B1E0-B0D6-C000AA0100A1
+// Returns the running firmware version string (esp_app_desc_t.version, set
+// from version.txt at build time). Plain read (no encryption) so the app can
+// query the version even before bonding, to decide whether an OTA is needed.
+static const ble_uuid128_t s_version_uuid = BLE_UUID128_INIT(
+    0xA1, 0x00, 0x01, 0xAA, 0x00, 0xC0, 0xD6, 0xB0,
+    0xE0, 0xB1, 0x00, 0xCA, 0x05, 0x00, 0xDA, 0xCA
 );
 
 // Up to CONFIG_BT_NIMBLE_MAX_CONNECTIONS phones may be connected at once. Each
@@ -408,6 +419,24 @@ static int gatt_filter_access(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
+// Read callback for the firmware version characteristic. Returns the running
+// image's version string (from esp_app_desc_t, populated from version.txt).
+static int gatt_version_access(uint16_t conn_handle, uint16_t attr_handle,
+                               struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn_handle;
+    (void)attr_handle;
+    (void)arg;
+
+    if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    const esp_app_desc_t *desc = esp_app_get_description();
+    int rc = os_mbuf_append(ctxt->om, desc->version, strlen(desc->version));
+    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
 // Write callback for the vehicle control characteristic. Parses a high-level
 // [opcode][value] command and hands it to the vehicle control subsystem, which
 // encodes and transmits the matching Tesla CAN frame.
@@ -479,6 +508,11 @@ static const struct ble_gatt_svc_def s_can_svc_def[] = {
                 .uuid = &s_control_uuid.u,
                 .access_cb = gatt_control_access,
                 .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
+            },
+            {
+                .uuid = &s_version_uuid.u,
+                .access_cb = gatt_version_access,
+                .flags = BLE_GATT_CHR_F_READ,
             },
             { 0 },
         },
