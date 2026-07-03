@@ -188,6 +188,24 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_hvacReqSecondRowState", 29, 3, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacUseModeledDuctTemp", 32, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacReqKeepClimateOn", 33, 2, 0, 1.0, 0.0, -1, -1 },
+    // ---- DAS_status2 (0x389) ----
+    { "DAS_accSpeedLimit", 0, 10, 0, 0.2, 0.0, -1, -1 },
+    { "DAS_pmmObstacleSeverity", 10, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_pmmLoggingRequest", 13, 1, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_activationFailureStatus", 14, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_pmmUltrasonicsFaultReason", 16, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_pmmRadarFaultReason", 19, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_pmmSysFaultReason", 21, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_pmmCameraFaultReason", 24, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_ACC_report", 26, 5, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_lssState", 31, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_radarTelemetry", 34, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_robState", 36, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_driverInteractionLevel", 38, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_ppOffsetDesiredRamp", 40, 8, 0, 0.01, -1.28, -1, -1 },
+    { "DAS_longCollisionWarning", 48, 4, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_status2Counter", 52, 4, 0, 1.0, 0.0, -1, -1 },
+    { "DAS_status2Checksum", 56, 8, 0, 1.0, 0.0, -1, -1 },
 };
 
 const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
@@ -200,6 +218,7 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_chargeRequest", 0x333, 4, 1, 154, 5, DBC_CKSUM_NONE, -1, -1 },
     { "UI_tripPlanning", 0x082, 8, 1, 159, 7, DBC_CKSUM_NONE, -1, -1 },
     { "UI_hvacRequest", 0x2F3, 5, 1, 166, 11, DBC_CKSUM_NONE, -1, -1 },
+    { "DAS_status2", 0x389, 8, 0, 177, 17, DBC_CKSUM_TESLA_BYTESUM, 193, 192 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {
