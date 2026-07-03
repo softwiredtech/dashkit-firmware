@@ -1,14 +1,6 @@
-// Auto wiper-off automation. When the car's DAS_wiperSpeed drops 15 -> 0
-// (wipers commanded fully off), replay the left-stalk wiper button hold plus a
-// scroll-down tick so the manual wiper UI also returns to off.
-//
-// All CAN packing/checksum/counter now goes through the DBC engine (can_send),
-// so there are no hardcoded ids, no hand-rolled tesla_checksum(), no manual
-// counter math here.
-
 #include "automation.h"
 #include "dbc.h"
-#include "vehicle_control.h"  // VC_CMD_WIPER_OFF_ENABLE
+#include "vehicle_control.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -25,10 +17,9 @@ static const char *TAG = "wiper_off";
 #define NVS_NAMESPACE   "wiper_off"
 #define NVS_KEY_ENABLED "en"
 
-// ---- State ----
-static volatile uint8_t s_last_wiper_speed = 0xFF;  // 0xFF = unknown
+static volatile bool s_armed = false;
 // Off by default (matches the Android app default); enabled over BLE.
-static volatile bool    s_enabled = false;
+static volatile bool s_enabled = false;
 
 static void save_enabled(bool enabled)
 {
@@ -97,7 +88,7 @@ static void wiper_off_init(automation_t *self)
 {
     (void)self;
     load_enabled();
-    s_last_wiper_speed = 0xFF;
+    s_armed = false;
     ESP_LOGI(TAG, "auto wiper-off ready (%s)", s_enabled ? "enabled" : "disabled");
 }
 
@@ -105,17 +96,36 @@ static void wiper_off_on_frame(automation_t *self, const can_tagged_frame_t *fra
 {
     (void)self;
 
-    // Trigger on DAS_wiperSpeed 15 -> 0. Keep tracking speed even when disabled
-    // so we don't fire on a stale edge right after being enabled.
+    // DAS_wiperSpeed: 0 = AUTO, 1..14 = manual speeds, 15 = OFF.
     double speed;
     if (can_get(frame->bus_id, "DAS_bodyControls", "DAS_wiperSpeed", &speed, false) != ESP_OK) {
-        return;  // DAS_bodyControls not cached yet
+        return;
     }
-    if (s_enabled && s_last_wiper_speed == 15 && (int)speed == 0) {
-        ESP_LOGW(TAG, "DAS_wiperSpeed 15->0, triggering");
-        xTaskCreatePinnedToCore(wiper_off_seq_task, "wiper_off", 4096, NULL, 5, NULL, 0);
+    int s = (int)speed;
+
+    if (s == 15) {
+        s_armed = true;
+        return;
     }
-    s_last_wiper_speed = (uint8_t)speed;
+
+    if (s > 0) {
+        s_armed = false;
+        return;
+    }
+
+    if (s_armed) {
+        s_armed = false;
+        double lss;
+        bool adas_on = can_get(0, "DAS_status2", "DAS_lssState", &lss, false) == ESP_OK
+                       && lss >= 2.0;
+        if (s_enabled && adas_on) {
+            ESP_LOGW(TAG, "DAS_wiperSpeed OFF->AUTO with ADAS on, triggering");
+            xTaskCreatePinnedToCore(wiper_off_seq_task, "wiper_off", 4096, NULL, 5, NULL, 0);
+        } else {
+            ESP_LOGI(TAG, "DAS_wiperSpeed OFF->AUTO, skipping (enabled=%d adas=%d)",
+                     s_enabled, adas_on);
+        }
+    }
 }
 
 static void wiper_off_on_config(automation_t *self, uint8_t opcode, uint16_t value)
