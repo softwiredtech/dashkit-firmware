@@ -45,6 +45,10 @@ typedef enum {
 
     // --- Rear AC fan override toggle (UI_hvacRequest 0x2F3) ---
     VC_CMD_REAR_FAN_TOGGLE = 0x43,
+
+    // --- Reboot the DashKit ---
+    // Not a CAN frame: restarts the ESP32 (esp_restart). value is ignored.
+    VC_CMD_REBOOT = 0x44,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.
