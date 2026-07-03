@@ -4,6 +4,7 @@
 #include "ble_server.h"
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -175,6 +176,11 @@ static void vehicle_control_task(void *arg)
             rear_fan_toggle();
             continue;
         }
+        if (req.opcode == VC_CMD_REBOOT) {
+            ESP_LOGW(TAG, "reboot requested, restarting");
+            vTaskDelay(pdMS_TO_TICKS(200));  // let the BLE write ack flush
+            esp_restart();
+        }
         if (is_config_opcode(req.opcode)) {
             automation_manager_config(req.opcode, req.value);
             continue;
@@ -211,6 +217,7 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
     }
     if (opcode != VC_CMD_ENTER_PAIRING &&
         opcode != VC_CMD_REAR_FAN_TOGGLE &&
+        opcode != VC_CMD_REBOOT &&
         !is_config_opcode(opcode) &&
         !find_command(opcode)) {
         ESP_LOGW(TAG, "reject unknown opcode 0x%02X", opcode);
