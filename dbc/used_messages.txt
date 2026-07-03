@@ -36,6 +36,7 @@ DI_systemStatus           0 filter  # app: gear
 DI_speed                  0 filter  # app: speed
 DAS_status                0 filter  # app: blind spot / speed limit / lane+collision warn
 DAS_status2               0 decode  # app: ADAS state; wiper-off gate reads DAS_lssState
+DAS_road                  0 filter  # app: traffic light color / stop line dist
 
 # ---- App-forwarded messages on the vehicle bus (bus 1) ----
 VCLEFT_lightStatus        1 filter  # app: left turn signal
