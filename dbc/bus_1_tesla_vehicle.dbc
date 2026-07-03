@@ -1376,36 +1376,9 @@ BO_ 1885 CP_sensorData: 8 VEH
  SG_ CP_proximityV_intervalMin10s m8 : 24|16@1+ (0.0001,0) [0|6.5535] "V"  Receiver
  SG_ CP_refVoltage m7 : 8|8@1+ (0.0070588235,0) [0|1.7999999925] "V"  Receiver
 
-BO_ 605 CP_status: 8 VEH
- SG_ CP_UHF_controlState : 38|4@1+ (1,0) [0|10] ""  Receiver
- SG_ CP_UHF_handleFound : 42|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_apsVoltage : 24|8@1+ (0.0715686,0) [0|18.249] "V" Vector__XXX
- SG_ CP_chargeCablePresent : 3|1@1+ (1,0) [0|1] ""  odin
- SG_ CP_chargeCableSecured : 4|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_chargeCableState : 14|2@1+ (1,0) [0|2] ""  Receiver
- SG_ CP_chargeDoorOpen : 10|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_chargeDoorOpenUI : 51|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_coldWeatherMode : 60|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_coverClosed : 63|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_doorButtonPressed : 32|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_doorControlState : 11|3@1+ (1,0) [0|6] ""  Receiver
- SG_ CP_doorOpenRequested : 43|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_faultLineSensed : 44|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_hvInletExposed : 61|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_inductiveDoorState : 45|3@1+ (1,0) [0|7] ""  Receiver
- SG_ CP_inductiveSensorState : 48|3@1+ (1,0) [0|7] ""  Receiver
- SG_ CP_insertEnableLine : 2|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_latch2ControlState : 19|3@1+ (1,0) [0|5] ""  Receiver
- SG_ CP_latch2State : 8|2@1+ (1,0) [0|3] ""  Receiver
- SG_ CP_latchControlState : 16|3@1+ (1,0) [0|5] ""  Receiver
- SG_ CP_latchEngaged : 62|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_latchState : 5|2@1+ (1,0) [0|3] ""  Receiver
- SG_ CP_ledColor : 33|4@1+ (1,0) [0|10] ""  Receiver
- SG_ CP_numAlertsSet : 53|7@1+ (1,0) [0|127] ""  Receiver
- SG_ CP_permanentPowerRequest : 7|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_swcanRelayClosed : 37|1@1+ (1,0) [0|1] ""  Receiver
- SG_ CP_type : 0|2@1+ (1,0) [0|3] ""  Receiver
- SG_ CP_vehicleUnlockRequest : 52|1@1+ (1,0) [0|1] ""  Receiver
+BO_ 605 DAS_road: 6 XXX
+ SG_ DAS_stopLineDist : 16|8@1+ (0.5,0) [0|127.5] "m" XXX
+ SG_ DAS_trafficLightColor : 26|3@0+ (1,0) [0|7] "" XXX
 
 BO_ 669 CP_dcChargeStatus: 4 VEH
  SG_ CP_evseOutputDcCurrent : 0|15@1- (0.0732467,0) [-1200|1200] "A" X
@@ -10156,19 +10129,7 @@ VAL_ 1885 CP_sensorDataSelect 0 "DOOR_COUNTS" 1 "PIN_TEMP" 2 "DOOR" 3 "LATCH" 4 
 VAL_ 1885 CP_inlet1HarnessIdState 1 "INVALID" 0 "SNA" 2 "VALID";
 VAL_ 1885 CP_inlet2HarnessIdState 1 "INVALID" 0 "SNA" 2 "VALID";
 
-VAL_ 605 CP_UHF_controlState 0 "INIT" 1 "CONFIG" 2 "IDLE" 3 "CALIBRATE" 4 "PREPARE_RX" 5 "RX" 6 "CHECK_RX" 7 "READ_RXFIFO" 8 "HANDLE_FOUND" 9 "SLEEP" 10 "FAULT";
-VAL_ 605 CP_chargeCablePresent 0 "NOT_PRESENT" 1 "PRESENT";
-VAL_ 605 CP_coldWeatherMode 1 "LATCH_MITIGATION" 0 "NONE" ;
-VAL_ 605 CP_doorControlState 0 "doorInit" 1 "doorIdle" 2 "doorOpenRequested" 3 "doorOpening" 4 "doorSenseOpen" 5 "doorClosing" 6 "doorSenseClosed";
-VAL_ 605 CP_faultLineSensed 0 "CLEARED" 1 "SET";
-VAL_ 605 CP_inductiveDoorState 0 "INIT" 1 "INIT_FROM_CHARGE" 2 "INIT_FROM_DRIVE" 3 "PRESENT" 4 "NOT_PRESENT" 5 "OFF_DRIVE" 6 "OFF_CHARGE";
-VAL_ 605 CP_inductiveSensorState 0 "INIT" 1 "POLL" 2 "SHUTDOWN" 3 "PAUSE" 4 "WAIT_FOR_INIT" 5 "FAULT";
-VAL_ 605 CP_latch2ControlState 0 "latchInit" 1 "latchIdle" 2 "latchDisengageRequested" 3 "latchDisengaging" 4 "latchDisengaged" 5 "latchEngaging";
-VAL_ 605 CP_latch2State 0 "SNA" 1 "DISENGAGED" 2 "ENGAGED" 3 "BLOCKING";
-VAL_ 605 CP_latchControlState 0 "latchInit" 1 "latchIdle" 2 "latchDisengageRequested" 3 "latchDisengaging" 4 "latchDisengaged" 5 "latchEngaging";
-VAL_ 605 CP_latchState 0 "SNA" 1 "DISENGAGED" 2 "ENGAGED" 3 "BLOCKING";
-VAL_ 605 CP_ledColor 0 "OFF" 1 "RED" 2 "GREEN" 3 "BLUE" 4 "WHITE" 5 "FLASHING_GREEN" 6 "FLASHING_AMBER" 7 "AMBER" 8 "RAVE" 9 "DEBUG" 10 "FLASHING_BLUE";
-VAL_ 605 CP_type 0 "US_TESLA" 1 "EURO_IEC" 2 "GB" 3 "IEC_CCS";
+VAL_ 605 DAS_trafficLightColor 0 "NONE" 1 "RED" 2 "GREEN" 3 "YELLOW" ;
 
 VAL_ 583 DAS_autopilotAbortReason 0 "NONE" 1 "WATCHDOG_HEALTH" 2 "DI_MIA" 3 "ESP_MIA" 4 "EPAS_MIA" 5 "GTW_MIA" 6 "SCCM_MIA" 7 "RADAR_MIA" 8 "VCFRONT_MIA" 9 "VCRIGHT_MIA" 10 "CRUISE_FAULT" 11 "CRUISE_NOT_ACTIVE" 12 "USER_DISABLED" 13 "TRAILER_MODE_ACTIVE" 14 "VEHICLE_SPEED_ABOVE_MAX" 15 "EPAS_EAC_NOT_ACTIVE" 16 "EPAS_EAC_ERROR" 17 "CAMERA_FAILSAFES" 18 "CAMERA_CALIBRATION" 19 "RADAR_BLIND" 20 "RADAR_FAULT" 21 "ACC_CANCEL_GENERIC" 22 "ACC_CANCEL_SILENT" 23 "ACC_FAULT" 24 "ROAD_ESTIMATOR_HEALTH" 25 "CONTROLLER_REFERENCE" 26 "CONTROLLER_SOLVER" 27 "CONTROLLER_NOT_ALLOWED" 28 "THERMAL_ISSUE" 29 "MAP_HEALTH" 30 "CONTROLLER_STALE_REFERENCE" 31 "CONTROLLER_STALE_LOCALIZATION" 32 "CONTROLLER_BAD_REF_UPDATE" 33 "AEB" 34 "CONTROLLER_REF_TOO_SHORT" 35 "MISSION_PLANNER_NO_VISION_LANES_FOUND" 36 "GORE_INCURSION" 37 "REACHED_END_OF_NAV_STOP" 63 "REASON_MAX";
 VAL_ 583 DAS_behaviorReport 0 "MISSION_PLANNER" 1 "VIEW_RANGE" 2 "CURVE_SPEED_ADAPTATION" 3 "RADAR_ONLY_BRAKING" 4 "KEEP_CALM" 5 "FLEET_SPEEDS" 6 "TRAFFIC_CONTROL_STOPPED_STATE" 7 "UNDERTAKE_ASSIST_KEEP_CALM" 8 "IN_LANE_VEHICLE" 9 "TARGET_LANE_VEHICLE" 10 "UNDERTAKE_VEHICLE" 11 "TRAFFIC_CONTROL" 12 "VISION_LANE_GEOMETRY" 13 "MAP_LANE_GEOMETRY" 14 "DRIVABLE_SPACE_VIOLATION" 15 "SLOWING_FOR_TARGET_LANE" 16 "VISION_SPEEDS" 17 "NAV_FLEET_SPEEDS" 18 "NAV_PATH_CSA" 19 "MERGE_VEHICLE_LEFT" 20 "MERGE_VEHICLE_RIGHT" 21 "CUTIN_VEHICLE_LEFT" 22 "CUTIN_VEHICLE_RIGHT";
