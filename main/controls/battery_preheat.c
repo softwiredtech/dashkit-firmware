@@ -12,12 +12,20 @@
 
 #include "esp_log.h"
 
+#include <string.h>
+
 static const char *TAG = "bat_preheat";
 
 #define BUS  1
 
 // Log roughly every 2 s (every 20 ticks at 100ms) so the bus log isn't flooded.
 #define PREHEAT_LOG_EVERY  20
+
+// Captured 0x082 payload from a real car auto-preheating while navigating to a
+// Supercharger
+static const uint8_t PREHEAT_DEFAULT[8] = {
+    0xAE, 0x50, 0xC5, 0x80, 0xFF, 0x03, 0x00, 0x80,
+};
 
 static volatile bool s_enabled = false;
 
@@ -43,12 +51,13 @@ static void battery_preheat_on_tick(automation_t *self)
         return;
     }
 
-    // Read-modify-write the car's own live frame so the other fields/bytes stay
-    // consistent with whatever it is broadcasting (and bit0 UI_tripPlanningActive
-    // is left untouched). The car always emits UI_tripPlanning on the bus.
     can_frame_t f;
-    if (can_frame_live(BUS, "UI_tripPlanning", &f) != ESP_OK) {
-        return;
+    bool live = (can_frame_live(BUS, "UI_tripPlanning", &f) == ESP_OK);
+    if (!live) {
+        if (can_frame_init("UI_tripPlanning", &f) != ESP_OK) {
+            return;
+        }
+        memcpy(f.data, PREHEAT_DEFAULT, sizeof(PREHEAT_DEFAULT));
     }
 
     // Force the preheat fields. Values captured from a real car auto-preheating
@@ -66,10 +75,11 @@ static void battery_preheat_on_tick(automation_t *self)
 
     static uint32_t count = 0;
     if ((count++ % PREHEAT_LOG_EVERY) == 0) {
-        ESP_LOGI(TAG, "TX 0x082 %02X %02X %02X %02X %02X %02X %02X %02X (%s)",
+        ESP_LOGI(TAG, "TX 0x082 %02X %02X %02X %02X %02X %02X %02X %02X (%s, %s)",
                  f.data[0], f.data[1], f.data[2],
                  f.data[3], f.data[4], f.data[5],
                  f.data[6], f.data[7],
+                 live ? "live" : "synth",
                  err == ESP_OK ? "ok" : "SEND-FAIL");
     }
 }
