@@ -11,6 +11,7 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
+#include "host/ble_att.h"
 #include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
@@ -18,6 +19,10 @@
 
 // Provided by the NimBLE store/config component (NVS-backed bond storage).
 void ble_store_config_init(void);
+
+// Sets the ATT permissions for every CCCD (the descriptor a client writes to
+// subscribe). Declared only in NimBLE's private ble_gatt_priv.h.
+void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 
 static const char *TAG = "ble";
 
@@ -601,6 +606,12 @@ esp_err_t ble_server_init(void)
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
+    // Require encryption to subscribe: the char's READ_ENC gates client reads,
+    // not server notifications, so without this the CAN stream reaches unpaired
+    // devices. Must run before ble_gatts_add_svcs() registers the CCCDs.
+    ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_READ_ENC |
+                                     BLE_ATT_F_WRITE | BLE_ATT_F_WRITE_ENC);
+
     rc = ble_gatts_count_cfg(s_gatt_svcs);
     if (rc != 0) {
         ESP_LOGE(TAG, "ble_gatts_count_cfg failed: %d", rc);
@@ -633,7 +644,9 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || !s_notify_enabled) {
+    // Only stream to an encrypted, subscribed link (belt-and-suspenders with
+    // the CCCD encryption requirement).
+    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || !s_notify_enabled || !s_encrypted) {
         return ESP_ERR_INVALID_STATE;
     }
 
