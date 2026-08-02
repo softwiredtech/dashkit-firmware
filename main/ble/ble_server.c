@@ -376,6 +376,12 @@ void ble_server_enter_pairing_mode(void)
     start_advertising();
 }
 
+void ble_server_delete_all_bonds(void)
+{
+    int rc = ble_store_clear();
+    ESP_LOGW(TAG, "Deleted all BLE bonds (rc=%d)", rc);
+}
+
 // ---------------------------------------------------------------------------
 // GATT access callback
 // ---------------------------------------------------------------------------

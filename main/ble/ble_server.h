@@ -29,3 +29,6 @@ uint16_t ble_server_get_conn_handle(void);
 // bonds yet the device is always pairable, so this is only meaningful once at
 // least one device is bonded.
 void ble_server_enter_pairing_mode(void);
+
+// Delete every persisted BLE bond (factory-reset of the pairing state).
+void ble_server_delete_all_bonds(void);
