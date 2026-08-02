@@ -2,9 +2,11 @@
 #include "multi_finger.h"
 #include "vehicle_control.h"
 #include "battery_preheat.h"
+#include "ble_server.h"
 #include "dbc.h"
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "nvs.h"
 #include <stdio.h>
@@ -24,6 +26,9 @@ static const char *TAG = "multi_finger";
 // After firing, ignore further taps for this long.
 #define REFIRE_LOCKOUT_US   (1500 * 1000)
 
+// Holding 5 fingers this long wipes all BLE bonds and reboots (clean pairing state).
+#define RESET_HOLD_US       (6000 * 1000)
+
 // Action bound to each finger count, indexed by (fingers - MULTI_FINGER_MIN_FINGERS).
 static volatile uint8_t s_actions[ACTION_SLOTS] = { MULTI_FINGER_ACTION_NONE };
 static volatile bool     s_mirrors_folded = false;
@@ -34,6 +39,8 @@ static volatile bool     s_charge_port_open = false;
 static volatile uint8_t  s_max_points = 0;
 static volatile int64_t  s_last_fire_us = 0;
 static volatile uint8_t  s_last_logged_points = 0xFF;
+// When the touch count first reached 5 fingers (0 = not currently held).
+static volatile int64_t  s_reset_hold_start_us = 0;
 
 static void nvs_key_for(uint8_t fingers, char *out, size_t out_len)
 {
@@ -145,6 +152,7 @@ static void multi_finger_init(automation_t *self)
     s_max_points = 0;
     s_last_fire_us = 0;
     s_last_logged_points = 0xFF;
+    s_reset_hold_start_us = 0;
     ESP_LOGI(TAG, "multi-finger ready (actions 3:%u 4:%u 5:%u)",
              s_actions[0], s_actions[1], s_actions[2]);
 }
@@ -164,6 +172,20 @@ static void multi_finger_on_frame(automation_t *self, const can_tagged_frame_t *
         ESP_LOGI(TAG, "touchPoints %u->%u (peak=%u)",
                  s_last_logged_points, points, s_max_points);
         s_last_logged_points = points;
+    }
+
+    // 5-finger hold: wipe all bonds and reboot into a clean pairing state.
+    if (points >= MULTI_FINGER_MAX_FINGERS) {
+        int64_t now = esp_timer_get_time();
+        if (s_reset_hold_start_us == 0) {
+            s_reset_hold_start_us = now;
+        } else if (now - s_reset_hold_start_us >= RESET_HOLD_US) {
+            ESP_LOGW(TAG, "5-finger hold -> deleting all bonds and rebooting");
+            ble_server_delete_all_bonds();
+            esp_restart();
+        }
+    } else {
+        s_reset_hold_start_us = 0;
     }
 
     // Gesture still in progress: track the highest finger count seen.
