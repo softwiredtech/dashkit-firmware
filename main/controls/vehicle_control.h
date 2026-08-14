@@ -51,10 +51,8 @@ typedef enum {
     VC_CMD_REBOOT = 0x44,
 
     // --- Keepalive ping ---
-    // Not a CAN frame: handled directly in the BLE layer (never queued). The app
-    // writes it every ~15 s; once the first ping is seen, the firmware drops the
-    // link after 60 s of silence so a dead app cannot squat on the connection
-    // slot. value is ignored.
+    // Not a CAN frame: handled in the BLE layer, never queued. Sent every ~15 s;
+    // after the first ping, 60 s of silence drops the link. value is ignored.
     VC_CMD_PING = 0x45,
 } vehicle_control_opcode_t;
 

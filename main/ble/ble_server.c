@@ -84,16 +84,14 @@ static uint16_t s_chr_val_handle;
 #define SEC_TIMEOUT_S 30
 static esp_timer_handle_t s_sec_timer = NULL;
 
-// App-level keepalive: the app writes VC_CMD_PING every ~15 s. Once the first
-// ping is seen (so pre-ping app versions are unaffected), the link is dropped
-// after KEEPALIVE_TIMEOUT_S without one — a dead app whose phone still holds
-// the link would otherwise squat on the slot forever.
+// App-level keepalive: the app pings every ~15 s; after the first ping (so
+// pre-ping app versions are unaffected) the link is dropped after
+// KEEPALIVE_TIMEOUT_S of silence, freeing the slot from dead apps.
 #define KEEPALIVE_TIMEOUT_S  60
 #define KEEPALIVE_CHECK_S    5
 static esp_timer_handle_t s_keepalive_timer = NULL;
 static volatile bool      s_ping_seen = false;
-// Seconds, not µs: written on the NimBLE host task and read on the esp_timer
-// task, and only a 32-bit access is atomic on Xtensa (int64_t would tear).
+// Seconds: 32-bit access is atomic on Xtensa, int64_t would tear across tasks.
 static volatile uint32_t  s_last_ping_s = 0;
 
 // Pairing mode gates the creation of NEW bonds. When false, a device that is
@@ -514,8 +512,7 @@ static int gatt_control_access(uint16_t conn_handle, uint16_t attr_handle,
         value |= (uint16_t)buf[2] << 8;
     }
 
-    // Keepalive is a BLE-layer concern: handle it here, never through the
-    // command queue (a full queue must not drop a liveness ping).
+    // Handled here, never queued: a full command queue must not drop a ping.
     if (opcode == VC_CMD_PING) {
         if (!s_ping_seen) {
             ESP_LOGI(TAG, "First keepalive ping (handle=%d); %d s timeout armed",
@@ -523,8 +520,7 @@ static int gatt_control_access(uint16_t conn_handle, uint16_t attr_handle,
         } else {
             ESP_LOGI(TAG, "Keepalive ping (handle=%d)", conn_handle);
         }
-        // Timestamp before flag: the checker must never see the flag without a
-        // valid timestamp (both volatile, so the stores stay ordered).
+        // Timestamp before flag, so the checker never sees the flag without one.
         s_last_ping_s = (uint32_t)(esp_timer_get_time() / 1000000);
         s_ping_seen = true;
         return 0;
