@@ -49,6 +49,13 @@ typedef enum {
     // --- Reboot the DashKit ---
     // Not a CAN frame: restarts the ESP32 (esp_restart). value is ignored.
     VC_CMD_REBOOT = 0x44,
+
+    // --- Keepalive ping ---
+    // Not a CAN frame: handled directly in the BLE layer (never queued). The app
+    // writes it every ~15 s; once the first ping is seen, the firmware drops the
+    // link after 60 s of silence so a dead app cannot squat on the connection
+    // slot. value is ignored.
+    VC_CMD_PING = 0x45,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.
