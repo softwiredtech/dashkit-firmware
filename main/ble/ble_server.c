@@ -84,6 +84,18 @@ static uint16_t s_chr_val_handle;
 #define SEC_TIMEOUT_S 30
 static esp_timer_handle_t s_sec_timer = NULL;
 
+// App-level keepalive: the app writes VC_CMD_PING every ~15 s. Once the first
+// ping is seen (so pre-ping app versions are unaffected), the link is dropped
+// after KEEPALIVE_TIMEOUT_S without one — a dead app whose phone still holds
+// the link would otherwise squat on the slot forever.
+#define KEEPALIVE_TIMEOUT_S  60
+#define KEEPALIVE_CHECK_S    5
+static esp_timer_handle_t s_keepalive_timer = NULL;
+static volatile bool      s_ping_seen = false;
+// Seconds, not µs: written on the NimBLE host task and read on the esp_timer
+// task, and only a 32-bit access is atomic on Xtensa (int64_t would tear).
+static volatile uint32_t  s_last_ping_s = 0;
+
 // Pairing mode gates the creation of NEW bonds. When false, a device that is
 // not already bonded cannot pair (its fresh bond is torn down at ENC_CHANGE,
 // and re-pair attempts by bonded peers are ignored). It is true only when no
@@ -131,6 +143,20 @@ static void sec_timeout_cb(void *arg)
     if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE && !s_encrypted) {
         ESP_LOGW(TAG, "No encryption within %d s; dropping handle %d",
                  SEC_TIMEOUT_S, s_conn_handle);
+        ble_gap_terminate(s_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+}
+
+static void keepalive_check_cb(void *arg)
+{
+    (void)arg;
+    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || !s_ping_seen) {
+        return;
+    }
+    uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000);
+    if (now_s - s_last_ping_s > KEEPALIVE_TIMEOUT_S) {
+        ESP_LOGW(TAG, "No keepalive ping for %d s; dropping handle %d",
+                 KEEPALIVE_TIMEOUT_S, s_conn_handle);
         ble_gap_terminate(s_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
     }
 }
@@ -198,6 +224,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         s_peer_was_bonded = bonded;
         s_encrypted = false;
         s_notify_enabled = false;
+        s_ping_seen = false;
         ESP_LOGI(TAG, "Connected (handle=%d, peer_bonded=%d, bonds=%d)",
                  s_conn_handle, bonded, bond_count());
         ble_att_set_preferred_mtu(512);
@@ -487,6 +514,22 @@ static int gatt_control_access(uint16_t conn_handle, uint16_t attr_handle,
         value |= (uint16_t)buf[2] << 8;
     }
 
+    // Keepalive is a BLE-layer concern: handle it here, never through the
+    // command queue (a full queue must not drop a liveness ping).
+    if (opcode == VC_CMD_PING) {
+        if (!s_ping_seen) {
+            ESP_LOGI(TAG, "First keepalive ping (handle=%d); %d s timeout armed",
+                     conn_handle, KEEPALIVE_TIMEOUT_S);
+        } else {
+            ESP_LOGI(TAG, "Keepalive ping (handle=%d)", conn_handle);
+        }
+        // Timestamp before flag: the checker must never see the flag without a
+        // valid timestamp (both volatile, so the stores stay ordered).
+        s_last_ping_s = (uint32_t)(esp_timer_get_time() / 1000000);
+        s_ping_seen = true;
+        return 0;
+    }
+
     esp_err_t err = vehicle_control_submit(opcode, value);
     if (err == ESP_ERR_INVALID_ARG) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -578,6 +621,14 @@ esp_err_t ble_server_init(void)
         .name = "ble_sec",
     };
     esp_timer_create(&sec_timer_args, &s_sec_timer);
+
+    const esp_timer_create_args_t keepalive_args = {
+        .callback = keepalive_check_cb,
+        .name = "ble_keepalive",
+    };
+    esp_timer_create(&keepalive_args, &s_keepalive_timer);
+    esp_timer_start_periodic(s_keepalive_timer,
+                             (uint64_t)KEEPALIVE_CHECK_S * 1000000ULL);
 
     rc = nimble_port_init();
     if (rc != ESP_OK) {
