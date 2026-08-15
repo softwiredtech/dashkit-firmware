@@ -218,6 +218,13 @@ static void conn_check_cb(void *arg)
             ble_gap_terminate(s->handle, BLE_ERR_REM_USER_CONN_TERM);
             continue;
         }
+        // App pings can lose the one-GATT-op-at-a-time race against OTA chunk
+        // writes; never cull the updating phone mid-transfer. Refreshing the
+        // ping clock also grants a fresh window after an aborted OTA.
+        if (s->handle == s_active_handle && ble_ota_is_in_progress()) {
+            s->last_ping_s = t;
+            continue;
+        }
         if (s->ping_seen && t - s->last_ping_s > KEEPALIVE_TIMEOUT_S) {
             ESP_LOGW(TAG, "No keepalive ping for %d s; dropping handle %d",
                      KEEPALIVE_TIMEOUT_S, s->handle);
