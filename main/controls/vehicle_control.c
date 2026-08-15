@@ -79,7 +79,8 @@ static void send_burst(const vc_command_t *cmd, uint16_t value)
 }
 
 // Hold the asserted value on the car's live frame for ~hold_ms (read-modify-
-// write, so unrelated bits in the frame are preserved), then drive it back to 0
+// write, so unrelated bits in the frame are preserved), then drive it back to 0.
+// With no live frame seen yet (quiet bus), fall back to from-scratch frames.
 static void send_rmw_pulse(const vc_command_t *cmd, uint16_t value)
 {
     int hold_reps = cmd->hold_ms / VC_RMW_GAP_MS;
@@ -87,22 +88,27 @@ static void send_rmw_pulse(const vc_command_t *cmd, uint16_t value)
         hold_reps = 1;
     }
 
-    bool ok = false;
-    for (int i = 0; i < hold_reps; i++) {
-        ok = (can_send_live(VC_BUS, cmd->msg, cmd->sig, value, false) == ESP_OK);
-        if (!ok) break;
-        vTaskDelay(pdMS_TO_TICKS(VC_RMW_GAP_MS));
+    can_frame_t probe;
+    bool live = (can_frame_live(VC_BUS, cmd->msg, &probe) == ESP_OK);
+    if (!live) {
+        ESP_LOGW(TAG, "%s: no live %s frame, sending from scratch",
+                 cmd->sig, cmd->msg);
     }
-    if (!ok) {
-        ESP_LOGW(TAG, "%s: no live %s frame yet, skipping", cmd->sig, cmd->msg);
-        return;
+
+    for (int i = 0; i < hold_reps; i++) {
+        esp_err_t err = live ? can_send_live(VC_BUS, cmd->msg, cmd->sig, value, false)
+                             : can_send(VC_BUS, cmd->msg, cmd->sig, value, false);
+        if (err != ESP_OK) return;
+        vTaskDelay(pdMS_TO_TICKS(VC_RMW_GAP_MS));
     }
     for (int i = 0; i < VC_RMW_RELEASE_REPS; i++) {
-        if (can_send_live(VC_BUS, cmd->msg, cmd->sig, 0, false) != ESP_OK) break;
+        esp_err_t err = live ? can_send_live(VC_BUS, cmd->msg, cmd->sig, 0, false)
+                             : can_send(VC_BUS, cmd->msg, cmd->sig, 0, false);
+        if (err != ESP_OK) break;
         vTaskDelay(pdMS_TO_TICKS(VC_RMW_GAP_MS));
     }
-    ESP_LOGI(TAG, "%s.%s pulse (val=%u, held %ums, released)",
-             cmd->msg, cmd->sig, value, cmd->hold_ms);
+    ESP_LOGI(TAG, "%s.%s pulse (val=%u, held %ums, released, live=%d)",
+             cmd->msg, cmd->sig, value, cmd->hold_ms, live);
 }
 
 static void rear_fan_toggle(void)
