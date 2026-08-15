@@ -71,28 +71,37 @@ static const ble_uuid128_t s_version_uuid = BLE_UUID128_INIT(
     0xE0, 0xB1, 0x00, 0xCA, 0x05, 0x00, 0xDA, 0xCA
 );
 
-// Exactly one phone may be connected at a time (CONFIG_BT_NIMBLE_MAX_CONNECTIONS
-// is 1). Several phones may still be *bonded*; they just take turns connecting.
-static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-static bool     s_notify_enabled = false;   // CAN notifications subscribed
-static bool     s_peer_was_bonded = false;  // peer had a stored bond at CONNECT
-static bool     s_encrypted = false;        // link encryption established
+// Up to MAX_CONNS phones may hold a connection so a stale link can't lock out
+// a working phone. Only the "active" one — the last to subscribe to the CAN
+// characteristic — gets the CAN stream and may send commands.
+#define MAX_CONNS CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+
+typedef struct {
+    uint16_t handle;           // BLE_HS_CONN_HANDLE_NONE = slot free
+    bool     encrypted;
+    bool     subscribed;
+    bool     peer_was_bonded;  // peer had a stored bond at CONNECT
+    bool     ping_seen;
+    uint32_t last_ping_s;      // seconds: 32-bit access is atomic on Xtensa
+    uint32_t connected_s;
+    uint32_t sub_seq;          // global order of the last subscribe, 0 = never
+} conn_slot_t;
+
+static conn_slot_t s_conns[MAX_CONNS];
+static uint32_t    s_sub_seq_counter = 0;
+static volatile uint16_t s_active_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t s_chr_val_handle;
 
 // A connection that has not established encryption within this time is dropped,
-// so an unknown device cannot squat on the only connection slot.
+// so an unknown device cannot squat on a connection slot.
 #define SEC_TIMEOUT_S 30
-static esp_timer_handle_t s_sec_timer = NULL;
 
 // App-level keepalive: the app pings every ~15 s; after the first ping (so
-// pre-ping app versions are unaffected) the link is dropped after
-// KEEPALIVE_TIMEOUT_S of silence, freeing the slot from dead apps.
+// pre-ping app versions are unaffected) a link is dropped after
+// KEEPALIVE_TIMEOUT_S of silence, freeing its slot from dead apps.
 #define KEEPALIVE_TIMEOUT_S  60
-#define KEEPALIVE_CHECK_S    5
-static esp_timer_handle_t s_keepalive_timer = NULL;
-static volatile bool      s_ping_seen = false;
-// Seconds: 32-bit access is atomic on Xtensa, int64_t would tear across tasks.
-static volatile uint32_t  s_last_ping_s = 0;
+#define CONN_CHECK_S         5
+static esp_timer_handle_t s_conn_check_timer = NULL;
 
 // Pairing mode gates the creation of NEW bonds. When false, a device that is
 // not already bonded cannot pair (its fresh bond is torn down at ENC_CHANGE,
@@ -134,28 +143,86 @@ static bool peer_is_bonded(const ble_addr_t *peer_id_addr)
     return false;
 }
 
-// Fires when a connection sits unencrypted for SEC_TIMEOUT_S.
-static void sec_timeout_cb(void *arg)
+static uint32_t now_s(void)
 {
-    (void)arg;
-    if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE && !s_encrypted) {
-        ESP_LOGW(TAG, "No encryption within %d s; dropping handle %d",
-                 SEC_TIMEOUT_S, s_conn_handle);
-        ble_gap_terminate(s_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    return (uint32_t)(esp_timer_get_time() / 1000000);
+}
+
+static conn_slot_t *slot_by_handle(uint16_t handle)
+{
+    if (handle == BLE_HS_CONN_HANDLE_NONE) {
+        return NULL;
+    }
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].handle == handle) {
+            return &s_conns[i];
+        }
+    }
+    return NULL;
+}
+
+static conn_slot_t *slot_alloc(void)
+{
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].handle == BLE_HS_CONN_HANDLE_NONE) {
+            return &s_conns[i];
+        }
+    }
+    return NULL;
+}
+
+static int conn_count(void)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (s_conns[i].handle != BLE_HS_CONN_HANDLE_NONE) {
+            n++;
+        }
+    }
+    return n;
+}
+
+// Active = the encrypted, subscribed link that subscribed most recently.
+static void update_active(void)
+{
+    conn_slot_t *best = NULL;
+    for (int i = 0; i < MAX_CONNS; i++) {
+        conn_slot_t *s = &s_conns[i];
+        if (s->handle == BLE_HS_CONN_HANDLE_NONE || !s->encrypted || !s->subscribed) {
+            continue;
+        }
+        if (!best || s->sub_seq > best->sub_seq) {
+            best = s;
+        }
+    }
+    uint16_t new_active = best ? best->handle : BLE_HS_CONN_HANDLE_NONE;
+    if (new_active != s_active_handle) {
+        ESP_LOGI(TAG, "Active connection: %d -> %d", s_active_handle, new_active);
+        s_active_handle = new_active;
     }
 }
 
-static void keepalive_check_cb(void *arg)
+// Drops links that never encrypted and links whose app stopped pinging.
+static void conn_check_cb(void *arg)
 {
     (void)arg;
-    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || !s_ping_seen) {
-        return;
-    }
-    uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000);
-    if (now_s - s_last_ping_s > KEEPALIVE_TIMEOUT_S) {
-        ESP_LOGW(TAG, "No keepalive ping for %d s; dropping handle %d",
-                 KEEPALIVE_TIMEOUT_S, s_conn_handle);
-        ble_gap_terminate(s_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    uint32_t t = now_s();
+    for (int i = 0; i < MAX_CONNS; i++) {
+        conn_slot_t *s = &s_conns[i];
+        if (s->handle == BLE_HS_CONN_HANDLE_NONE) {
+            continue;
+        }
+        if (!s->encrypted && t - s->connected_s > SEC_TIMEOUT_S) {
+            ESP_LOGW(TAG, "No encryption within %d s; dropping handle %d",
+                     SEC_TIMEOUT_S, s->handle);
+            ble_gap_terminate(s->handle, BLE_ERR_REM_USER_CONN_TERM);
+            continue;
+        }
+        if (s->ping_seen && t - s->last_ping_s > KEEPALIVE_TIMEOUT_S) {
+            ESP_LOGW(TAG, "No keepalive ping for %d s; dropping handle %d",
+                     KEEPALIVE_TIMEOUT_S, s->handle);
+            ble_gap_terminate(s->handle, BLE_ERR_REM_USER_CONN_TERM);
+        }
     }
 }
 
@@ -201,64 +268,79 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             start_advertising();
             break;
         }
-        if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
-            // Should not happen with MAX_CONNECTIONS=1; drop the newcomer.
-            ESP_LOGW(TAG, "Already connected; dropping handle %d",
-                     event->connect.conn_handle);
+        conn_slot_t *slot = slot_alloc();
+        if (!slot) {
+            // Should not happen: advertising stops while every slot is taken.
+            ESP_LOGW(TAG, "All %d slots taken; dropping handle %d",
+                     MAX_CONNS, event->connect.conn_handle);
             ble_gap_terminate(event->connect.conn_handle,
                               BLE_ERR_REM_USER_CONN_TERM);
             break;
         }
 
-        // Note: bonded phones are NOT turned away while a pairing window is
-        // open. The DashPilot apps pause their auto-reconnect after sending the
-        // enter-pairing command instead, keeping the slot free for the new
-        // device without firmware-side connection juggling.
         struct ble_gap_conn_desc desc;
         bool bonded = ble_gap_conn_find(event->connect.conn_handle, &desc) == 0
                    && peer_is_bonded(&desc.peer_id_addr);
 
-        s_conn_handle = event->connect.conn_handle;
-        s_peer_was_bonded = bonded;
-        s_encrypted = false;
-        s_notify_enabled = false;
-        s_ping_seen = false;
-        ESP_LOGI(TAG, "Connected (handle=%d, peer_bonded=%d, bonds=%d)",
-                 s_conn_handle, bonded, bond_count());
+        slot->handle = event->connect.conn_handle;
+        slot->encrypted = false;
+        slot->subscribed = false;
+        slot->peer_was_bonded = bonded;
+        slot->ping_seen = false;
+        slot->last_ping_s = 0;
+        slot->connected_s = now_s();
+        slot->sub_seq = 0;
+        ESP_LOGI(TAG, "Connected (handle=%d, peer_bonded=%d, bonds=%d, conns=%d/%d)",
+                 slot->handle, bonded, bond_count(), conn_count(), MAX_CONNS);
         ble_att_set_preferred_mtu(512);
-        ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
-        esp_timer_stop(s_sec_timer);  // harmless if not running
-        esp_timer_start_once(s_sec_timer, (uint64_t)SEC_TIMEOUT_S * 1000000ULL);
+        ble_gattc_exchange_mtu(slot->handle, NULL, NULL);
+        // Keep advertising while slots remain.
+        start_advertising();
         break;
     }
 
-    case BLE_GAP_EVENT_DISCONNECT:
+    case BLE_GAP_EVENT_DISCONNECT: {
         ESP_LOGI(TAG, "Disconnected (handle=%d, reason=0x%x)",
                  event->disconnect.conn.conn_handle, event->disconnect.reason);
-        if (event->disconnect.conn.conn_handle == s_conn_handle) {
-            s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-            s_notify_enabled = false;
-            s_encrypted = false;
-            s_peer_was_bonded = false;
-            esp_timer_stop(s_sec_timer);
-            ble_ota_on_disconnect();
-            // Reset the CAN filter to pass-through for the next client.
-            can_filter_set(NULL, 0);
+        conn_slot_t *slot = slot_by_handle(event->disconnect.conn.conn_handle);
+        if (slot) {
+            bool was_active = (slot->handle == s_active_handle);
+            slot->handle = BLE_HS_CONN_HANDLE_NONE;
+            slot->encrypted = false;
+            slot->subscribed = false;
+            slot->peer_was_bonded = false;
+            slot->ping_seen = false;
+            if (was_active) {
+                // OTA is only ever driven by the active phone.
+                ble_ota_on_disconnect();
+            }
+            update_active();
+            if (conn_count() == 0) {
+                // Reset the CAN filter to pass-through for the next client.
+                can_filter_set(NULL, 0);
+            }
         }
         start_advertising();
         break;
+    }
 
     case BLE_GAP_EVENT_MTU:
         ESP_LOGI(TAG, "MTU updated: %d", event->mtu.value);
         break;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
-        if (event->subscribe.attr_handle == s_chr_val_handle &&
-            event->subscribe.conn_handle == s_conn_handle) {
-            s_notify_enabled = event->subscribe.cur_notify;
-            ESP_LOGI(TAG, "Notifications %s (handle=%d)",
-                     s_notify_enabled ? "enabled" : "disabled",
-                     event->subscribe.conn_handle);
+        if (event->subscribe.attr_handle == s_chr_val_handle) {
+            conn_slot_t *slot = slot_by_handle(event->subscribe.conn_handle);
+            if (slot) {
+                slot->subscribed = event->subscribe.cur_notify;
+                if (slot->subscribed) {
+                    slot->sub_seq = ++s_sub_seq_counter;
+                }
+                ESP_LOGI(TAG, "Notifications %s (handle=%d)",
+                         slot->subscribed ? "enabled" : "disabled",
+                         event->subscribe.conn_handle);
+                update_active();
+            }
         }
         break;
 
@@ -288,13 +370,14 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             ble_gap_terminate(ch, BLE_ERR_REM_USER_CONN_TERM);
             break;
         }
-        if (ch != s_conn_handle) {
+        conn_slot_t *slot = slot_by_handle(ch);
+        if (!slot) {
             break;
         }
 
         // The peer had no stored bond when it connected, so this encryption can
         // only come from a freshly-created bond.
-        if (!s_peer_was_bonded && !s_pairing_mode) {
+        if (!slot->peer_was_bonded && !s_pairing_mode) {
             // Unsolicited pairing: a new device bonded while we are locked down.
             // Delete the fresh bond and drop the link before it can use the
             // encryption-protected characteristics.
@@ -307,16 +390,17 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             break;
         }
 
-        s_encrypted = true;
-        esp_timer_stop(s_sec_timer);
+        slot->encrypted = true;
 
-        if (!s_peer_was_bonded) {
+        if (!slot->peer_was_bonded) {
             // A new device paired during an open window: close it (one device
             // per window).
             ESP_LOGI(TAG, "New device paired; closing pairing window");
-            s_peer_was_bonded = true;
+            slot->peer_was_bonded = true;
             close_pairing_window();
         }
+        // Bonded peers get their CCCD restored at encryption time.
+        update_active();
 
         ble_gap_set_prefered_le_phy(ch, BLE_GAP_LE_PHY_2M_MASK,
                                     BLE_GAP_LE_PHY_2M_MASK,
@@ -355,8 +439,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
 
 static void start_advertising(void)
 {
-    // The only connection slot is taken; advertise again once it frees up.
-    if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+    // Every slot is taken; advertise again once one frees up.
+    if (conn_count() >= MAX_CONNS) {
         return;
     }
 
@@ -387,16 +471,18 @@ static void start_advertising(void)
 void ble_server_enter_pairing_mode(void)
 {
     open_pairing_window();
-    // The new device needs the only connection slot. Drop the current
-    // connection — normally the phone that sent the command — so the new device
-    // can connect within the window. The requesting app pauses its
-    // auto-reconnect for the window duration so it doesn't take the slot back.
-    if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
-        ESP_LOGI(TAG, "Pairing mode: dropping handle %d to free the slot",
-                 s_conn_handle);
-        ble_gap_terminate(s_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
-        // The DISCONNECT handler restarts advertising.
-        return;
+    // A free slot serves the new device; only when full drop a non-active link.
+    if (conn_count() >= MAX_CONNS) {
+        for (int i = 0; i < MAX_CONNS; i++) {
+            conn_slot_t *s = &s_conns[i];
+            if (s->handle != BLE_HS_CONN_HANDLE_NONE && s->handle != s_active_handle) {
+                ESP_LOGI(TAG, "Pairing mode: dropping handle %d to free a slot",
+                         s->handle);
+                ble_gap_terminate(s->handle, BLE_ERR_REM_USER_CONN_TERM);
+                // The DISCONNECT handler restarts advertising.
+                return;
+            }
+        }
     }
     start_advertising();
 }
@@ -513,17 +599,28 @@ static int gatt_control_access(uint16_t conn_handle, uint16_t attr_handle,
     }
 
     // Handled here, never queued: a full command queue must not drop a ping.
+    // Accepted from every connection, not just the active one.
     if (opcode == VC_CMD_PING) {
-        if (!s_ping_seen) {
-            ESP_LOGI(TAG, "First keepalive ping (handle=%d); %d s timeout armed",
-                     conn_handle, KEEPALIVE_TIMEOUT_S);
-        } else {
-            ESP_LOGI(TAG, "Keepalive ping (handle=%d)", conn_handle);
+        conn_slot_t *slot = slot_by_handle(conn_handle);
+        if (slot) {
+            if (!slot->ping_seen) {
+                ESP_LOGI(TAG, "First keepalive ping (handle=%d); %d s timeout armed",
+                         conn_handle, KEEPALIVE_TIMEOUT_S);
+            } else {
+                ESP_LOGI(TAG, "Keepalive ping (handle=%d)", conn_handle);
+            }
+            // Timestamp before flag, so the checker never sees the flag alone.
+            slot->last_ping_s = now_s();
+            slot->ping_seen = true;
         }
-        // Timestamp before flag, so the checker never sees the flag without one.
-        s_last_ping_s = (uint32_t)(esp_timer_get_time() / 1000000);
-        s_ping_seen = true;
         return 0;
+    }
+
+    // Only the active connection may drive the vehicle.
+    if (conn_handle != s_active_handle) {
+        ESP_LOGW(TAG, "Control write 0x%02X from non-active handle %d rejected",
+                 opcode, conn_handle);
+        return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
     }
 
     esp_err_t err = vehicle_control_submit(opcode, value);
@@ -612,19 +709,18 @@ esp_err_t ble_server_init(void)
 {
     int rc;
 
-    const esp_timer_create_args_t sec_timer_args = {
-        .callback = sec_timeout_cb,
-        .name = "ble_sec",
-    };
-    esp_timer_create(&sec_timer_args, &s_sec_timer);
+    // Static zero-init would leave handles at 0, which is a valid conn handle.
+    for (int i = 0; i < MAX_CONNS; i++) {
+        s_conns[i].handle = BLE_HS_CONN_HANDLE_NONE;
+    }
 
-    const esp_timer_create_args_t keepalive_args = {
-        .callback = keepalive_check_cb,
-        .name = "ble_keepalive",
+    const esp_timer_create_args_t conn_check_args = {
+        .callback = conn_check_cb,
+        .name = "ble_conn_check",
     };
-    esp_timer_create(&keepalive_args, &s_keepalive_timer);
-    esp_timer_start_periodic(s_keepalive_timer,
-                             (uint64_t)KEEPALIVE_CHECK_S * 1000000ULL);
+    esp_timer_create(&conn_check_args, &s_conn_check_timer);
+    esp_timer_start_periodic(s_conn_check_timer,
+                             (uint64_t)CONN_CHECK_S * 1000000ULL);
 
     rc = nimble_port_init();
     if (rc != ESP_OK) {
@@ -697,9 +793,8 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // Only stream to an encrypted, subscribed link (belt-and-suspenders with
-    // the CCCD encryption requirement).
-    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || !s_notify_enabled || !s_encrypted) {
+    uint16_t conn = s_active_handle;  // snapshot: host task may change it
+    if (conn == BLE_HS_CONN_HANDLE_NONE) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -707,9 +802,9 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
     if (!om) {
         return ESP_ERR_NO_MEM;
     }
-    int rc = ble_gatts_notify_custom(s_conn_handle, s_chr_val_handle, om);
+    int rc = ble_gatts_notify_custom(conn, s_chr_val_handle, om);
     if (rc != 0) {
-        ESP_LOGW(TAG, "Notify failed (handle=%d): %d", s_conn_handle, rc);
+        ESP_LOGW(TAG, "Notify failed (handle=%d): %d", conn, rc);
         return ESP_FAIL;
     }
     return ESP_OK;
@@ -717,10 +812,11 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
 
 bool ble_server_is_connected(void)
 {
-    return s_conn_handle != BLE_HS_CONN_HANDLE_NONE && s_notify_enabled;
+    return s_active_handle != BLE_HS_CONN_HANDLE_NONE;
 }
 
+// The active connection: OTA status notifications target it.
 uint16_t ble_server_get_conn_handle(void)
 {
-    return s_conn_handle;
+    return s_active_handle;
 }
