@@ -689,12 +689,13 @@ static void on_sync(void)
 {
     // Use best available address
     ble_hs_util_ensure_addr(0);
+    int n_bonds = bond_count();
     // With no bonds yet we are in first-time setup: stay pairable. Once a device
     // is bonded, lock down until a paired device opens a pairing window.
-    s_pairing_mode = (bond_count() == 0);
+    s_pairing_mode = (n_bonds == 0);
     start_advertising();
-    ESP_LOGI(TAG, "BLE host synced, advertising as \"%s\" (pairing_mode=%d)",
-             DEVICE_NAME, s_pairing_mode);
+    ESP_LOGI(TAG, "BLE host synced, advertising as \"%s\" (pairing_mode=%d, bonds=%d)",
+             DEVICE_NAME, s_pairing_mode, n_bonds);
 }
 
 static void on_reset(int reason)
