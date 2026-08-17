@@ -16,6 +16,10 @@
 #include "freertos/task.h"
 #include <string.h>
 
+#if !defined(CONFIG_BT_NIMBLE_NVS_PERSIST) || (CONFIG_BT_NIMBLE_NVS_PERSIST != 1)
+#error "CONFIG_BT_NIMBLE_NVS_PERSIST must be enabled (bonds would be RAM-only)"
+#endif
+
 static const char *TAG = "main";
 
 #define BLE_BATCH_MAX_FRAMES  16
