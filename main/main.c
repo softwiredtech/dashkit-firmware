@@ -11,6 +11,7 @@
 #include "ble_ota.h"
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -103,11 +104,16 @@ static void can_to_ble_task(void *arg)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "DashKit firmware starting...");
+    ESP_LOGI(TAG, "DashKit firmware starting... (reset reason=%d)",
+             (int)esp_reset_reason());
 
     // Initialize NVS (required for BLE)
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // Erases the bond store: a bonded phone then hits the iOS stale-bond wall
+        // and can't re-pair to this address on its own. Loud on purpose.
+        ESP_LOGE(TAG, "NVS re-init (%s): erasing — all bonds will be lost",
+                 esp_err_to_name(err));
         nvs_flash_erase();
         err = nvs_flash_init();
     }
