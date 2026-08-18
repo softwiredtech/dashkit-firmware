@@ -736,6 +736,7 @@ static esp_err_t iface_send(can_interface_t *self, const can_frame_t *frame)
     if (frame->brs)      t1 |= (1 << 6);
 
     uint8_t data_len = dlc_to_len(frame->dlc);
+    if (data_len > 8) return ESP_ERR_NOT_SUPPORTED;
     // Always write full 16-byte message slot (8-byte header + 8-byte data
     // region) to the MCP2518FD TX FIFO RAM.  The ESP32 SPI peripheral with
     // DMA enabled silently drops trailing bytes when the transfer length is

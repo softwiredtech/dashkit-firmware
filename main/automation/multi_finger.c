@@ -174,15 +174,14 @@ static void multi_finger_on_frame(automation_t *self, const can_tagged_frame_t *
         s_last_logged_points = points;
     }
 
-    // 5-finger hold: wipe all bonds and reboot into a clean pairing state.
+    // 5-finger hold: factory reset (wipe bonds + rotate address) + reboot.
     if (points >= MULTI_FINGER_MAX_FINGERS) {
         int64_t now = esp_timer_get_time();
         if (s_reset_hold_start_us == 0) {
             s_reset_hold_start_us = now;
         } else if (now - s_reset_hold_start_us >= RESET_HOLD_US) {
-            ESP_LOGW(TAG, "5-finger hold -> deleting all bonds and rebooting");
-            ble_server_delete_all_bonds();
-            esp_restart();
+            ESP_LOGW(TAG, "5-finger hold -> factory reset");
+            ble_server_factory_reset();
         }
     } else {
         s_reset_hold_start_us = 0;
