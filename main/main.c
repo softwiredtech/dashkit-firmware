@@ -11,7 +11,9 @@
 #include "ble_ota.h"
 
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,7 +23,26 @@
 #error "CONFIG_BT_NIMBLE_NVS_PERSIST must be enabled (bonds would be RAM-only)"
 #endif
 
+#if !defined(CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE) || (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE != 1)
+#error "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE must be enabled (a crashing OTA image would brick the device)"
+#endif
+
 static const char *TAG = "main";
+
+// Commit the running image after it has survived a stable boot window (OTA
+// rollback: PENDING_VERIFY -> VALID, so the next reboot does not roll back).
+#define MARK_VALID_DELAY_MS  10000
+
+static void mark_app_valid_cb(void *arg)
+{
+    (void)arg;
+    esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "mark app valid failed: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "app confirmed valid (OTA rollback cleared)");
+    }
+}
 
 #define BLE_BATCH_MAX_FRAMES  16
 #define BLE_BATCH_TIMEOUT_MS  20
@@ -193,6 +214,15 @@ void app_main(void)
     xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 8192, NULL, 5, NULL, 0);
 
     ESP_LOGI(TAG, "DashKit firmware ready");
+
+    // Commit this image once it has survived the boot window (OTA rollback).
+    const esp_timer_create_args_t mv_args = {
+        .callback = mark_app_valid_cb,
+        .name = "ota_mark_valid",
+    };
+    esp_timer_handle_t mv_timer;
+    ESP_ERROR_CHECK(esp_timer_create(&mv_args, &mv_timer));
+    ESP_ERROR_CHECK(esp_timer_start_once(mv_timer, MARK_VALID_DELAY_MS * 1000ULL));
 
     led_set_color(LED_COLOR_GREEN);
 }
