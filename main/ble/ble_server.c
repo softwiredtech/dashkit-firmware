@@ -392,9 +392,19 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "Encryption change: status=%d (handle=%d)",
                  event->enc_change.status, ch);
         if (event->enc_change.status != 0) {
-            // Encryption/pairing failed (e.g. a phone holding a stale bond we no
-            // longer have, or a pairing we refused). Drop only this link — never
-            // reboot here, or any stranger could restart the CAN bridge at will.
+            // Bonded peer's key is stale/desynced: evict its bond and open a
+            // pairing window. Strangers (peer_was_bonded == false) get none.
+            conn_slot_t *slot = slot_by_handle(ch);
+            if (slot && slot->peer_was_bonded) {
+                struct ble_gap_conn_desc desc;
+                if (ble_gap_conn_find(ch, &desc) == 0
+                    && ble_store_util_delete_peer(&desc.peer_id_addr) == 0) {
+                    ESP_LOGW(TAG, "Stale bond evicted for handle %d", ch);
+                    open_pairing_window();
+                }
+            }
+            // Drop the link only; never reboot, or a stranger could restart
+            // the CAN bridge at will.
             ESP_LOGW(TAG, "Encryption failed (status=%d); terminating handle %d",
                      event->enc_change.status, ch);
             ble_gap_terminate(ch, BLE_ERR_REM_USER_CONN_TERM);
@@ -439,21 +449,15 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
     }
 
     case BLE_GAP_EVENT_REPEAT_PAIRING: {
-        if (!s_pairing_mode) {
-            // An already-bonded peer is trying to pair again while we are locked
-            // down. Ignore it: keep the existing bond, reject the re-pair.
-            ESP_LOGW(TAG, "Repeat pairing ignored: not in pairing mode");
-            return BLE_GAP_REPEAT_PAIRING_IGNORE;
-        }
-        // In pairing mode: delete our stale bond and let the fresh pairing run.
+        // Bonded peer re-pairing with a stale key: delete it and accept the
+        // fresh pair; IGNORE deadlocks reconnection. Strangers can't fire it.
         struct ble_gap_conn_desc desc;
-        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) {
-            int drc = ble_store_util_delete_peer(&desc.peer_id_addr);
-            ESP_LOGW(TAG, "Repeat pairing: deleted stale bond (rc=%d), retrying", drc);
-        } else {
-            ESP_LOGW(TAG, "Repeat pairing: conn desc not found");
+        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0
+            && ble_store_util_delete_peer(&desc.peer_id_addr) == 0) {
+            ESP_LOGW(TAG, "Repeat pairing: deleted stale bond, retrying");
+            return BLE_GAP_REPEAT_PAIRING_RETRY;
         }
-        return BLE_GAP_REPEAT_PAIRING_RETRY;
+        return BLE_GAP_REPEAT_PAIRING_IGNORE;  // host loops if we RETRY w/o delete
     }
 
     case BLE_GAP_EVENT_PASSKEY_ACTION:
