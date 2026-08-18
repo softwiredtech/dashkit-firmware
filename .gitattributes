@@ -1,0 +1,5 @@
+# Shell scripts must stay LF in the working tree. This repo is developed on
+# Windows (core.autocrlf=true), and a CRLF shell script breaks bash on Linux:
+# the shebang line and `set -o pipefail` both fail on the stray CR. Affects
+# e.g. tools/publish_ota.sh when run from a Windows checkout.
+*.sh text eol=lf
