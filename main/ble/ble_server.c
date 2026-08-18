@@ -219,6 +219,22 @@ static void conn_check_cb(void *arg)
         if (s->handle == BLE_HS_CONN_HANDLE_NONE) {
             continue;
         }
+        // No live connection for this handle (a terminate that never produced a
+        // DISCONNECT): free the slot or a full table keeps advertising off.
+        if (ble_gap_conn_find(s->handle, NULL) != 0) {
+            ESP_LOGW(TAG, "Reaped stale slot %d (handle=%d)", i, s->handle);
+            bool was_active = (s->handle == s_active_handle);
+            s->handle = BLE_HS_CONN_HANDLE_NONE;
+            if (was_active) {
+                // OTA is only ever driven by the active phone.
+                ble_ota_on_disconnect();
+            }
+            update_active();
+            if (ble_hs_synced()) {
+                start_advertising();
+            }
+            continue;
+        }
         if (!s->encrypted && t - s->connected_s > SEC_TIMEOUT_S) {
             ESP_LOGW(TAG, "No encryption within %d s; dropping handle %d",
                      SEC_TIMEOUT_S, s->handle);
