@@ -6,6 +6,8 @@
 #include "vehicle_control.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_random.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -111,6 +113,11 @@ static esp_timer_handle_t s_conn_check_timer = NULL;
 #define PAIRING_WINDOW_S   120
 static bool               s_pairing_mode = false;
 static esp_timer_handle_t s_pairing_timer = NULL;
+
+// Static-random address persisted by a factory reset; applied at on_sync.
+#define NVS_NS_BLE_ADDR   "ble_addr"
+#define NVS_KEY_BLE_ADDR  "addr"
+static uint8_t s_own_addr_type = BLE_OWN_ADDR_PUBLIC;
 
 // ---------------------------------------------------------------------------
 // GAP event handling
@@ -468,7 +475,7 @@ static void start_advertising(void)
 
     ble_gap_adv_set_fields(&fields);
 
-    int rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER,
+    int rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER,
                                &adv_params, gap_event_handler, NULL);
     if (rc != 0 && rc != BLE_HS_EALREADY) {
         ESP_LOGE(TAG, "Advertising start failed: %d", rc);
@@ -494,10 +501,30 @@ void ble_server_enter_pairing_mode(void)
     start_advertising();
 }
 
-void ble_server_delete_all_bonds(void)
+void ble_server_factory_reset(void)
 {
     int rc = ble_store_clear();
-    ESP_LOGW(TAG, "Deleted all BLE bonds (rc=%d)", rc);
+    ESP_LOGW(TAG, "Factory reset: cleared BLE bonds (rc=%d)", rc);
+
+    // iOS won't re-pair a fixed address it thinks it's bonded to, so a wipe
+    // alone strands every phone. Rotate to a fresh static-random address.
+    uint8_t addr[6];
+    esp_fill_random(addr, sizeof(addr));  // hw RNG: this runs on the rx-task
+    addr[5] |= 0xc0;                      // static random addr type bits
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NS_BLE_ADDR, NVS_READWRITE, &nvs);
+    if (err == ESP_OK) {
+        err = nvs_set_blob(nvs, NVS_KEY_BLE_ADDR, addr, sizeof(addr));
+        if (err == ESP_OK) {
+            err = nvs_commit(nvs);
+        }
+        nvs_close(nvs);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Factory reset: failed to persist rotated address (%s)",
+                 esp_err_to_name(err));
+    }
+    esp_restart();
 }
 
 // ---------------------------------------------------------------------------
@@ -689,13 +716,26 @@ static void on_sync(void)
 {
     // Use best available address
     ble_hs_util_ensure_addr(0);
+
+    // Apply the rotated address persisted by a factory reset (set_rnd needs sync).
+    nvs_handle_t nvs;
+    if (nvs_open(NVS_NS_BLE_ADDR, NVS_READONLY, &nvs) == ESP_OK) {
+        size_t len = 6;
+        uint8_t addr[6];
+        if (nvs_get_blob(nvs, NVS_KEY_BLE_ADDR, addr, &len) == ESP_OK && len == 6
+            && ble_hs_id_set_rnd(addr) == 0) {
+            ESP_LOGW(TAG, "Using rotated BLE address");
+        }
+        nvs_close(nvs);
+    }
+    ble_hs_id_infer_auto(0, &s_own_addr_type);
     int n_bonds = bond_count();
     // With no bonds yet we are in first-time setup: stay pairable. Once a device
     // is bonded, lock down until a paired device opens a pairing window.
     s_pairing_mode = (n_bonds == 0);
     start_advertising();
-    ESP_LOGI(TAG, "BLE host synced, advertising as \"%s\" (pairing_mode=%d, bonds=%d)",
-             DEVICE_NAME, s_pairing_mode, n_bonds);
+    ESP_LOGI(TAG, "BLE host synced, advertising as \"%s\" (pairing_mode=%d, addr_type=%d, bonds=%d)",
+             DEVICE_NAME, s_pairing_mode, s_own_addr_type, n_bonds);
 }
 
 static void on_reset(int reason)

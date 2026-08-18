@@ -1,0 +1,72 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute cache keys
+        id: keys
+        run: |
+          echo "idf=$(git ls-tree --object-only HEAD esp-idf)" >> "$GITHUB_OUTPUT"
+          echo "py=$(python3 -V | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      # ESP-IDF checkout (worktree + git objects) and its installed tools
+      # (~/.espressif: xtensa toolchain, python venv). Keyed on the pinned
+      # submodule commit, so bumping the submodule rebuilds the cache; the
+      # python version is in the key because the venv breaks if the runner
+      # image upgrades python.
+      - name: Cache ESP-IDF and tools
+        id: cache-idf
+        uses: actions/cache@v4
+        with:
+          path: |
+            esp-idf
+            .git/modules/esp-idf
+            ~/.espressif
+          key: idf-${{ runner.os }}-${{ steps.keys.outputs.idf }}-${{ steps.keys.outputs.py }}
+
+      - name: Fetch ESP-IDF and install toolchain
+        if: steps.cache-idf.outputs.cache-hit != 'true'
+        run: |
+          git submodule update --init --recursive
+          ./esp-idf/install.sh esp32s3
+
+      # Compiler cache: makes the compile step itself fast on repeat builds.
+      # Key on the commit so every run saves; restore-keys picks the newest.
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-
+
+      - name: Install ccache
+        run: sudo apt-get update -qq && sudo apt-get install -y ccache
+
+      - name: Build
+        env:
+          IDF_CCACHE_ENABLE: "1"
+          CCACHE_DIR: /home/runner/.ccache
+        run: |
+          . ./esp-idf/export.sh
+          idf.py build
+          ccache -s
+
+      - name: Upload firmware binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashkit-firmware-${{ github.sha }}
+          path: build/dashkit-firmware.bin
+          retention-days: 14
