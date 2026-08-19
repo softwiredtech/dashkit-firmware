@@ -54,6 +54,11 @@ typedef enum {
     // Not a CAN frame: handled in the BLE layer, never queued. Sent every ~15 s;
     // after the first ping, 60 s of silence drops the link. value is ignored.
     VC_CMD_PING = 0x45,
+
+    // --- Keep climate on after leaving the car (UI_hvacRequest 0x2F3) ---
+    // Config only (not a CAN frame): enables/disables the climate-keep
+    // automation. 1=enable, 0=disable. Persisted in NVS.
+    VC_CMD_CLIMATE_KEEP_ENABLE = 0x46,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.

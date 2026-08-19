@@ -32,7 +32,7 @@ UI_hvacRequest        1 decode   # rear AC fan toggle; also app: climate setpoin
 
 # ---- App-forwarded messages on the chassis bus (bus 0) ----
 SCCM_steeringAngleSensor  0 filter  # app: steering angle
-DI_systemStatus           0 filter  # app: gear
+DI_systemStatus           0 decode  # app: gear; climate-keep Park gate reads DI_gear
 DI_speed                  0 filter  # app: speed
 DAS_status                0 filter  # app: blind spot / speed limit / lane+collision warn
 DAS_status2               0 decode  # app: ADAS state; wiper-off gate reads DAS_lssState
