@@ -59,6 +59,11 @@ typedef enum {
     // Config only (not a CAN frame): enables/disables the climate-keep
     // automation. 1=enable, 0=disable. Persisted in NVS.
     VC_CMD_CLIMATE_KEEP_ENABLE = 0x46,
+
+    // --- Climate-keep duration ---
+    // Config only (not a CAN frame): how long the climate-keep automation runs
+    // after the driver leaves, in minutes (clamped to 1..60). Persisted in NVS.
+    VC_CMD_CLIMATE_KEEP_DURATION = 0x47,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.

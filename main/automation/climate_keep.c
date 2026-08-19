@@ -24,7 +24,9 @@ static const char *TAG = "climate_keep";
 #define HVAC_MSG       "UI_hvacRequest"
 #define HVAC_ID        0x2F3
 
-#define KEEP_DURATION_US   (5LL * 60 * 1000 * 1000)  // 5 min
+#define KEEP_DEFAULT_MIN   5
+#define KEEP_MIN_MINUTES   1
+#define KEEP_MAX_MINUTES   60
 
 #define HVAC_POWER_ON      1  // UI_hvacReqUserPowerState: 1 = ON, 0 = OFF
 #define HVAC_POWER_OFF     0
@@ -41,9 +43,11 @@ static const char *TAG = "climate_keep";
 
 #define NVS_NAMESPACE   "climate_keep"
 #define NVS_KEY_ENABLED "en"
+#define NVS_KEY_MINUTES "min"
 
-// Default ON for initial in-car testing; a persisted app toggle (NVS) overrides.
-static volatile bool s_enabled = true;
+static volatile bool s_enabled = false;
+
+static volatile uint16_t s_keep_minutes = KEEP_DEFAULT_MIN;
 
 static volatile int s_present = -1;  // -1 = unknown
 
@@ -56,7 +60,7 @@ static volatile int64_t  s_deadline_us = 0;
 
 static void climate_keep_inject_task(void *arg);
 
-static void save_enabled(bool enabled)
+static void save_config(void)
 {
     nvs_handle_t nvs;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
@@ -64,17 +68,20 @@ static void save_enabled(bool enabled)
         ESP_LOGW(TAG, "nvs_open failed: %s", esp_err_to_name(err));
         return;
     }
-    err = nvs_set_u8(nvs, NVS_KEY_ENABLED, enabled ? 1 : 0);
+    err = nvs_set_u8(nvs, NVS_KEY_ENABLED, s_enabled ? 1 : 0);
+    if (err == ESP_OK) {
+        err = nvs_set_u16(nvs, NVS_KEY_MINUTES, s_keep_minutes);
+    }
     if (err == ESP_OK) {
         err = nvs_commit(nvs);
     }
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "failed to persist enabled flag: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "failed to persist config: %s", esp_err_to_name(err));
     }
     nvs_close(nvs);
 }
 
-static void load_enabled(void)
+static void load_config(void)
 {
     nvs_handle_t nvs;
     if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) {
@@ -83,6 +90,11 @@ static void load_enabled(void)
     uint8_t enabled = 0;
     if (nvs_get_u8(nvs, NVS_KEY_ENABLED, &enabled) == ESP_OK) {
         s_enabled = (enabled != 0);
+    }
+    uint16_t minutes = 0;
+    if (nvs_get_u16(nvs, NVS_KEY_MINUTES, &minutes) == ESP_OK
+        && minutes >= KEEP_MIN_MINUTES && minutes <= KEEP_MAX_MINUTES) {
+        s_keep_minutes = minutes;
     }
     nvs_close(nvs);
 }
@@ -112,25 +124,25 @@ static void start_injection(void)
     }
     ESP_LOGI(TAG, "snapshot fresh (%llds old)", age_us / 1000000);
 
-    s_deadline_us = now + KEEP_DURATION_US;
+    s_deadline_us = now + (int64_t)s_keep_minutes * 60 * 1000 * 1000;
     s_active = true;
-    ESP_LOGW(TAG, "START keeping climate ON for %llds (L=0x%02X R=0x%02X power=0x%02X)",
-             KEEP_DURATION_US / 1000000,
+    ESP_LOGW(TAG, "START keeping climate ON for %umin (L=0x%02X R=0x%02X power=0x%02X)",
+             s_keep_minutes,
              s_snapshot.data[0], s_snapshot.data[1], s_snapshot.data[3]);
 }
 
 static void climate_keep_init(automation_t *self)
 {
     (void)self;
-    load_enabled();
+    load_config();
     s_present = -1;
     s_snapshot_valid = false;
     s_active = false;
     xTaskCreatePinnedToCore(climate_keep_inject_task, "climate_keep_inj", 4096,
                             NULL, 5, NULL, 0);
-    ESP_LOGI(TAG, "climate-keep ready (%s), window=%llds, keep-mode=%d, inject=%dms",
+    ESP_LOGI(TAG, "climate-keep ready (%s), window=%umin, keep-mode=%d, inject=%dms",
              s_enabled ? "ENABLED" : "disabled",
-             KEEP_DURATION_US / 1000000, HVAC_KEEP_MODE, INJECT_MS);
+             s_keep_minutes, HVAC_KEEP_MODE, INJECT_MS);
 }
 
 static void climate_keep_on_frame(automation_t *self, const can_tagged_frame_t *frame)
@@ -232,16 +244,27 @@ static void climate_keep_inject_task(void *arg)
 static void climate_keep_on_config(automation_t *self, uint8_t opcode, uint16_t value)
 {
     (void)self;
-    if (opcode != VC_CMD_CLIMATE_KEEP_ENABLE) {
-        return;
-    }
-    bool enabled = (value != 0);
-    if (enabled != s_enabled) {
-        ESP_LOGW(TAG, "automation %s", enabled ? "ENABLED" : "disabled");
-        s_enabled = enabled;
-        save_enabled(enabled);
-        if (!enabled) {
-            stop_injection("automation disabled");
+    if (opcode == VC_CMD_CLIMATE_KEEP_ENABLE) {
+        bool enabled = (value != 0);
+        if (enabled != s_enabled) {
+            ESP_LOGW(TAG, "automation %s", enabled ? "ENABLED" : "disabled");
+            s_enabled = enabled;
+            save_config();
+            if (!enabled) {
+                stop_injection("automation disabled");
+            }
+        }
+    } else if (opcode == VC_CMD_CLIMATE_KEEP_DURATION) {
+        uint16_t minutes = value;
+        if (minutes < KEEP_MIN_MINUTES) {
+            minutes = KEEP_MIN_MINUTES;
+        } else if (minutes > KEEP_MAX_MINUTES) {
+            minutes = KEEP_MAX_MINUTES;
+        }
+        if (minutes != s_keep_minutes) {
+            ESP_LOGW(TAG, "keep window set to %umin", minutes);
+            s_keep_minutes = minutes;
+            save_config();
         }
     }
 }
