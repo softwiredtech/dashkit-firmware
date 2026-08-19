@@ -42,7 +42,8 @@ static const char *TAG = "climate_keep";
 #define NVS_NAMESPACE   "climate_keep"
 #define NVS_KEY_ENABLED "en"
 
-static volatile bool s_enabled = false;
+// Default ON for initial in-car testing; a persisted app toggle (NVS) overrides.
+static volatile bool s_enabled = true;
 
 static volatile int s_present = -1;  // -1 = unknown
 
@@ -97,19 +98,6 @@ static void stop_injection(const char *why)
 
 static void start_injection(void)
 {
-    // Soft Park gate: refuse if gear is known and not P; proceed+warn if unknown.
-    double gear;
-    esp_err_t gerr = can_get(0, "DI_systemStatus", "DI_gear", &gear, false);
-    if (gerr == ESP_OK && (int)gear != 1) {
-        ESP_LOGW(TAG, "user left but gear=%d (not P), NOT keeping climate", (int)gear);
-        return;
-    }
-    if (gerr != ESP_OK) {
-        ESP_LOGW(TAG, "gear unknown (%s) -- proceeding anyway", esp_err_to_name(gerr));
-    } else {
-        ESP_LOGI(TAG, "gear=P confirmed");
-    }
-
     if (!s_snapshot_valid) {
         ESP_LOGE(TAG, "no climate-on snapshot -- cannot keep, aborting");
         return;
