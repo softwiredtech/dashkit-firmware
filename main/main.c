@@ -9,6 +9,7 @@
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
+#include "sim_can.h"
 
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -212,6 +213,11 @@ void app_main(void)
 
     // Bridge task: CAN -> BLE
     xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 8192, NULL, 5, NULL, 0);
+
+#if defined(CONFIG_DASHKIT_SIM_CAN)
+    // TEST AID: synthetic CAN frames once a client is connected (no vehicle bus).
+    sim_can_start();
+#endif
 
     ESP_LOGI(TAG, "DashKit firmware ready");
 

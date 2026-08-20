@@ -56,6 +56,24 @@ Then rebuild:
 idf.py fullclean && idf.py build
 ```
 
+## Bench CAN Simulator (test aid)
+
+To validate first-time pairing and data display without a live vehicle, enable
+synthetic CAN frames by adding to `sdkconfig.defaults`:
+
+```
+CONFIG_DASHKIT_SIM_CAN=y
+```
+
+then rebuild:
+
+```bash
+idf.py fullclean && idf.py build
+```
+
+TEST AID ONLY — keep off (the default) for production/on-car builds. See
+`main/sim_can.c` for which frames are faked.
+
 ## Hardware
 
 | Function | GPIO |

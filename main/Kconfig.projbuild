@@ -1,0 +1,14 @@
+# DashKit project-configuration menu.
+#
+# CONFIG_DASHKIT_SIM_CAN gates the optional bench CAN-data simulator (a dev/test
+# aid). Disabled by default; keep off for production/on-car use.
+menu "DashKit"
+    config DASHKIT_SIM_CAN
+        bool "CAN data simulator (test aid)"
+        default n
+        help
+            Injects synthetic Tesla vehicle-CAN frames into the real CAN->BLE
+            pipeline once a client is connected, so the DashPilot app can
+            complete first-time pairing and display data without a live vehicle
+            CAN bus. TEST AID ONLY - keep off for production/on-car use.
+endmenu

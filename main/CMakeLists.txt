@@ -15,6 +15,7 @@ idf_component_register(
         "automation/climate_keep.c"
         "ble/ble_server.c"
         "ble/ble_ota.c"
+        "sim_can.c"
     INCLUDE_DIRS
         "."
         "can"
