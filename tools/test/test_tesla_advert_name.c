@@ -30,16 +30,22 @@ static int g_fail;
     else { printf("ok:   " __VA_ARGS__); printf("\n"); } \
 } while (0)
 
-// Derive the legacy advertisement name for a VIN into out (must hold 11
-// bytes: 'S' + 8 hex + trailing format char + NUL).
-static void legacy_name(const char *vin, char fmt_char, char out[11])
+// Derive the legacy advertisement name for a VIN into out (must hold 19
+// bytes: 'S' + first 16 hex chars of SHA1(VIN) + trailing format char + NUL).
+// Matches the real Tesla broadcast: "S" + first 16 hex of SHA1(VIN) + role
+// letter (teslabtapi / vehicle-command), e.g. VIN 5YJ3E1EB3MF074051 ->
+// Sf9cd80ddffdd5492C. (The short 8-hex form is *not* produced by real cars; it
+// was only used by the original fake-beacon tests, and the matcher accepts it
+// too for backward compatibility.)
+static void legacy_name(const char *vin, char fmt_char, char out[19])
 {
     unsigned char digest[20];
     size_t n = strlen(vin);
 
     mbedtls_sha1((const unsigned char *)vin, n, digest);
-    snprintf(out, 11, "S%02X%02X%02X%02X%c",
-             digest[0], digest[1], digest[2], digest[3], fmt_char);
+    snprintf(out, 19, "S%02X%02X%02X%02X%02X%02X%02X%02X%c",
+             digest[0], digest[1], digest[2], digest[3],
+             digest[4], digest[5], digest[6], digest[7], fmt_char);
 }
 
 // "Tesla " + last 6 characters of the VIN.
@@ -89,6 +95,21 @@ static void check_legacy(void)
           "legacy: lowercase trailing role char rejected (case-sensitive)");
     CHECK(tesla_advert_name_format((const uint8_t *)"Xabcd1234C", 10) == TESLA_NAME_NONE,
           "legacy: non-'S' first byte rejected");
+
+    // Real Tesla legacy format: "S" + 16 hex + C/R/D/P (18 chars) — the
+    // on-air real-car capture (VIN 5YJ3E1EB3MF074051 -> Sf9cd80ddffdd5492C).
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sf9cd80ddffdd5492C", 18) == TESLA_NAME_LEGACY,
+          "legacy: S + 16 hex + C (real Tesla 18-char format)");
+    CHECK(tesla_advert_name_format((const uint8_t *)"S12Ab9DeF00AbCdEfR", 18) == TESLA_NAME_LEGACY,
+          "legacy: 16-hex mixed-case + trailing R accepted");
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sf9cd80ddffdd5492X", 18) == TESLA_NAME_NONE,
+          "legacy: 16-hex with invalid role char rejected");
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sf9cd80ddffdd5492", 17) == TESLA_NAME_NONE,
+          "legacy: 16-hex with no trailing role char rejected");
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sf9cd80ddffdd5492XX", 19) == TESLA_NAME_NONE,
+          "legacy: 18-char length boundary honored (19 rejected)");
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sf9cd80ddffdd5492C", 17) == TESLA_NAME_NONE,
+          "legacy: 18-char name with truncated length rejected");
 }
 
 static void check_modern(void)
@@ -130,7 +151,7 @@ static void check_edges(void)
 static void check_derive_accept(void)
 {
     const char *vin = "5YJ30123456789ABC";
-    char legacy[11];
+    char legacy[19];
     char modern[13];
 
     legacy_name(vin, 'C', legacy);
@@ -150,7 +171,7 @@ static void check_derive_accept(void)
 int main(int argc, char **argv)
 {
     const char *vin = argc > 1 ? argv[1] : "5YJ30123456789ABC";
-    char legacy[11];
+    char legacy[19];
     char modern[13];
 
     printf("== tesla advert-name matcher ==\n");

@@ -21,20 +21,35 @@ int tesla_vin_char(unsigned char c)
     return (c != 'I' && c != 'O' && c != 'Q');
 }
 
-/* Legacy: "S" + exactly 8 hex chars + one of C/R/D/P  ->  total len 10. */
+/* Legacy: "S" + (8 or 16) hex chars + one of C/R/D/P.
+ *
+ * The 8-hex form (total length 10) is what the original fake-beacon Phase-1
+ * tests used. Real Tesla vehicles advertise "S" + the first 16 hex chars of
+ * SHA1(VIN) + role letter (total length 18), per vehicle-command/teslabtapi;
+ * e.g. VIN 5YJ3E1EB3MF074051 -> Sf9cd80ddffdd5492C. A real car was seen on-air
+ * with the 18-char name (2026-08-19) after this was tightened to accept both,
+ * so accept either hex length for both dev beacons and real vehicles.
+ */
 static int name_is_legacy(const uint8_t *name, size_t len)
 {
-    size_t i;
+    size_t hex_len, i;
 
-    if (len != 10 || name[0] != 'S') {
+    if (name[0] != 'S') {
         return 0;
     }
-    for (i = 1; i <= 8; i++) {
-        if (!is_hex(name[i])) {
+    if (len == 10) {
+        hex_len = 8;
+    } else if (len == 18) {
+        hex_len = 16;
+    } else {
+        return 0;
+    }
+    for (i = 0; i < hex_len; i++) {
+        if (!is_hex(name[1 + i])) {
             return 0;
         }
     }
-    switch (name[9]) {
+    switch (name[len - 1]) {
     case 'C':
     case 'R':
     case 'D':

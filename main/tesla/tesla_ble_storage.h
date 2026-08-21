@@ -58,6 +58,37 @@ esp_err_t tesla_storage_save_car_addr(const tesla_car_addr_t *addr);
 // Remove all Tesla state (used by a factory reset / re-pair flow in Phase 3+).
 void tesla_storage_erase_all(void);
 
+// ---- Onboard advertisement-name log (in-car diagnostic) ----
+//
+// Records EVERY distinct BLE local name the observer sees (not just Tesla
+// matches), so a bench run near a car made WITHOUT a live serial monitor can
+// be read off at the next boot and we can see exactly what the car (and other
+// nearby devices) actually broadcast. Entries are dedup by name bytes. This is
+// a lightweight diagnostic aid, not a telemetry subsystem.
+#define TESLA_ADVERT_LOG_MAX 64
+typedef struct {
+    uint8_t  name[32];
+    uint8_t  name_len;
+    uint8_t  format;      // tesla_name_format (0=other, 1=legacy, 2=modern)
+    uint8_t  matched;     // 1 if the name matched a Tesla format
+    uint8_t  mac[6];
+    int8_t   rssi;        // dBm (last sighting)
+    uint8_t  _pad;
+    uint16_t count;       // number of sightings this boot+
+    uint32_t time_s;      // seconds since boot on first sighting
+} __attribute__((packed)) tesla_advert_log_entry_t;
+
+void tesla_advert_log_add(const uint8_t *name, size_t name_len, uint8_t matched,
+                          uint8_t format, const uint8_t mac[6], int8_t rssi);
+void tesla_advert_log_dump(void);
+void tesla_advert_log_clear(void);
+
+// Persist and return a monotonically increasing boot counter. Confirms the
+// board actually powered up during an unattended run (e.g. in the car): it
+// advances every boot regardless of BLE or advert-log writes, so a missing
+// run shows up as a gap in the sequence when reading the logs back.
+uint32_t tesla_storage_boot_count(void);
+
 #ifdef __cplusplus
 }
 #endif

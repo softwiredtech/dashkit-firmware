@@ -11,6 +11,7 @@
 
 #include "tesla_ble_adapter.h"
 #include "tesla_advert_name.h"
+#include "tesla_ble_storage.h"
 
 #include "esp_log.h"
 #include "esp_random.h"
@@ -83,17 +84,30 @@ static int discovery_event_handler(struct ble_gap_event *event, void *arg)
         return 0;
     }
     fmt = tesla_advert_name_format(fields.name, fields.name_len);
-    if (fmt == TESLA_NAME_NONE) {
-        return 0;
-    }
     mac = disc->addr.val;
-    // The name/format is the feature's primary output, so keep it at INFO.
-    // The full MAC is more identifying (a beacon is linkable across scans),
-    // so gate it behind debug per the review privacy note.
-    ESP_LOGI(TAG, "Tesla vehicle found: name=\"%.*s\" (format=%s)",
-             (int)fields.name_len, (const char *)fields.name, fmt_str[fmt]);
-    ESP_LOGD(TAG, "  MAC=%02X:%02X:%02X:%02X:%02X:%02X",
-             mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+    if (fmt != TESLA_NAME_NONE) {
+        // The name/format is the feature's primary output, so keep it at INFO.
+        // The full MAC is more identifying (a beacon is linkable across scans),
+        // so gate it behind debug per the review privacy note.
+        ESP_LOGI(TAG, "Tesla vehicle found: name=\"%.*s\" (format=%s), rssi=%d",
+                 (int)fields.name_len, (const char *)fields.name, fmt_str[fmt],
+                 (int)disc->rssi);
+        ESP_LOGD(TAG, "  MAC=%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+    } else {
+        // Diagnostic (temporary INFO): surface every nearby advertisement name
+        // so a live monitor shows what the observer actually sees. Intended to
+        // prove/disprove the scan path; demote back to DEBUG once confirmed.
+        ESP_LOGI(TAG, "advert seen: name=\"%.*s\" (format=-) rssi=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X",
+                 (int)fields.name_len, (const char *)fields.name, (int)disc->rssi,
+                 mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+    }
+    // Persist every distinct advertisement name, flagging Tesla matches, so an
+    // in-car run made with no live serial monitor is read off at the next boot
+    // and we can see exactly what the car actually broadcasts.
+    tesla_advert_log_add(fields.name, fields.name_len,
+                         (uint8_t)(fmt != TESLA_NAME_NONE), (uint8_t)fmt,
+                         mac, disc->rssi);
     return 0;
 }
 
@@ -170,6 +184,14 @@ static void scan_wait_task(void *arg)
 
 esp_err_t tesla_ble_adapter_observer_init(void)
 {
+    // Confirm power-ons: the boot counter advances every boot, so an unattended
+    // run (e.g. in the car) shows up as a gap/advance in the sequence even if it
+    // recorded no advertisements.
+    ESP_LOGI(TAG, "boot #%u - dumping previous run's advertisement log",
+             (unsigned)tesla_storage_boot_count());
+    // Dump the previous run's advertisement names immediately, so a bench run
+    // done without a serial monitor is read off at the next boot.
+    tesla_advert_log_dump();
     if (xTaskCreate(scan_wait_task, "tesla_scan", 3072, NULL, 5, NULL) != pdPASS) {
         ESP_LOGE(TAG, "failed to create scan task");
         return ESP_ERR_NO_MEM;
