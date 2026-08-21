@@ -70,3 +70,28 @@ jobs:
           name: dashkit-firmware-${{ github.sha }}
           path: build/dashkit-firmware.bin
           retention-days: 14
+
+  # Host-side Tesla crypto/session unit tests (Phase 0). No ESP-IDF needed:
+  # the runner builds a pinned mbedTLS 3.6.2 into a local prefix.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache mbedTLS host build
+        uses: actions/cache@v4
+        with:
+          path: build/tesla-host-test
+          key: mbedtls-host-${{ runner.os }}-3.6.2
+
+      - name: Run Tesla crypto known-answer tests
+        run: bash tools/test/run_tesla_crypto_test.sh
+
+      - name: Run Tesla advertisement-name matcher tests (Phase 1)
+        run: bash tools/test/run_tesla_advert_name_test.sh
+
+      - name: Run Tesla Phase 2 protocol round-trip tests (handshake/command/response)
+        run: bash tools/test/run_tesla_session_test.sh
+
+      - name: Run Tesla Phase 3 enrollment tests (keygen + present-key message)
+        run: bash tools/test/run_tesla_enrollment_test.sh

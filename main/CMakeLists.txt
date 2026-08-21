@@ -1,3 +1,20 @@
+# Tesla BLE vehicle-command client (Phase 2: central connect + VCSEC handshake
+# + GET_STATUS). Gated by DASHKIT_TESLA_BLE so a feature-off build drops the
+# tesla/ modules, the observer *and* central roles, and the storage dependency.
+# tesla_ble_adapter depends on NimBLE's scan/central API; tesla_advert_name is
+# pure C (used by the host test suite); tesla_ble_storage uses NVS;
+# tesla_ble_client uses the tesla-protocol session/protobuf layers.
+set(TESLA_SRCS "")
+if(CONFIG_DASHKIT_TESLA_BLE)
+    list(APPEND TESLA_SRCS
+        "tesla/tesla_advert_name.c"
+        "tesla/tesla_ble_adapter.c"
+        "tesla/tesla_ble_storage.c"
+        "tesla/tesla_ble_client.c"
+        "tesla/tesla_pairing.c"
+    )
+endif()
+
 idf_component_register(
     SRCS
         "main.c"
@@ -15,6 +32,8 @@ idf_component_register(
         "automation/climate_keep.c"
         "ble/ble_server.c"
         "ble/ble_ota.c"
+        "ble/ble_appchan.c"
+        ${TESLA_SRCS}
     INCLUDE_DIRS
         "."
         "can"
@@ -22,6 +41,7 @@ idf_component_register(
         "controls"
         "automation"
         "ble"
+        "tesla"
     REQUIRES
         driver
         esp_adc
@@ -29,6 +49,11 @@ idf_component_register(
         bt
         esp_timer
         app_update
+        # Tesla vehicle-command protocol component (committed nanopb bindings +
+        # crypto/session/protobuf-build). mbedtls is an explicit dependency of
+        # the main component because the Tesla client drives the crypto layer.
+        mbedtls
+        tesla-protocol
 )
 
 # DBC codegen: regenerate the committed dbc_generated.{c,h} from the vendored

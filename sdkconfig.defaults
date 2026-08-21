@@ -4,13 +4,33 @@ CONFIG_IDF_TARGET="esp32s3"
 # Bluetooth - NimBLE
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
-CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4
+# GATT-client procedure pool. NimBLE's default (4) is tuned for a single quiet
+# central; our Tesla client runs a connect -> discovery -> subscribe ->
+# handshake -> write/read/indicate sequence with fast reconnect cycles, and
+# chaining the next GATT procedure from a completion callback can transiently
+# exceed 4 slots when prior cycles' "unresponsive" procs (e.g. a sleeping car)
+# are still lingering on their timeout timer (ble_gattc_proc_alloc -> ENOMEM,
+# seen as "chr discovery start failed: 6"). Size 8 gives retry-storm headroom
+# for the one car link; ESP-IDF's own central examples size this 35-70.
+CONFIG_BT_NIMBLE_GATT_MAX_PROCS=8
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
-CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
-CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
 CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
 CONFIG_BT_NIMBLE_NVS_PERSIST=y
+
+# Note: ESP32-S3's controller does not expose BT_CTRL_BLE_MAX_ACT (a C3-family
+# symbol); the S3 default BLE activity limit covers a central link + observer
+# scan + peripheral advertising with headroom, so plan §5's explicit bump is a
+# no-op here and intentionally omitted.
+
+# Tesla BLE (vehicle-command) client. Phase 2: CENTRAL + OBSERVER roles for
+# connect → VCSEC handshake → GET_STATUS poll → idle-disconnect. MAX_CONNECTIONS
+# is bumped to 4 (plan §6): a transient central car link must not crowd out
+# two phone peripherals.
+CONFIG_DASHKIT_TESLA_BLE=y
 
 # Partition table
 CONFIG_PARTITION_TABLE_CUSTOM=y

@@ -9,6 +9,10 @@
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
+#include "ble_appchan.h"
+#include "tesla_ble_adapter.h"
+#include "tesla_ble_client.h"
+#include "tesla_pairing.h"
 
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -25,6 +29,18 @@
 
 #if !defined(CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE) || (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE != 1)
 #error "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE must be enabled (a crashing OTA image would brick the device)"
+#endif
+
+// Tesla BLE central client relies on the NimBLE observer + central roles.
+// Phase 1 needed only OBSERVER; Phase 2 adds CENTRAL (connect, discovery,
+// write/subscribe against the vehicle).
+#if defined(CONFIG_DASHKIT_TESLA_BLE) && \
+    (!defined(CONFIG_BT_NIMBLE_ROLE_OBSERVER) || (CONFIG_BT_NIMBLE_ROLE_OBSERVER != 1))
+#error "CONFIG_DASHKIT_TESLA_BLE requires CONFIG_BT_NIMBLE_ROLE_OBSERVER (set CONFIG_BT_NIMBLE_ROLE_OBSERVER=y)"
+#endif
+#if defined(CONFIG_DASHKIT_TESLA_BLE) && \
+    (!defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) || (CONFIG_BT_NIMBLE_ROLE_CENTRAL != 1))
+#error "CONFIG_DASHKIT_TESLA_BLE requires CONFIG_BT_NIMBLE_ROLE_CENTRAL (set CONFIG_BT_NIMBLE_ROLE_CENTRAL=y)"
 #endif
 
 static const char *TAG = "main";
@@ -208,7 +224,22 @@ void app_main(void)
     // BLE
     ESP_ERROR_CHECK(ble_server_init());
     ESP_ERROR_CHECK(ble_ota_init());
+    ESP_ERROR_CHECK(ble_appchan_init());
     ESP_ERROR_CHECK(ble_server_start());
+
+#if defined(CONFIG_DASHKIT_TESLA_BLE)
+    // Boot canary for the Tesla link (plan §5): role state must be visible and
+    // a missing key/link must not be silent. Phase 3 enrollment populates the
+    // tesla NVS key/vin/mac; until then the pairing task waits for provisioning
+    // and the client task logs "no enrolled key".
+    ESP_LOGI(TAG, "Tesla BLE: enabled (observer=%d, central=%d). Observer scan "
+                  "+ client poll active; pairing (enrollment) runs when a "
+                  "key/link is not yet present.",
+             CONFIG_BT_NIMBLE_ROLE_OBSERVER, CONFIG_BT_NIMBLE_ROLE_CENTRAL);
+    ESP_ERROR_CHECK(tesla_ble_adapter_observer_init());
+    ESP_ERROR_CHECK(tesla_pairing_init());
+    ESP_ERROR_CHECK(tesla_ble_client_init());
+#endif
 
     // Bridge task: CAN -> BLE
     xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 8192, NULL, 5, NULL, 0);
