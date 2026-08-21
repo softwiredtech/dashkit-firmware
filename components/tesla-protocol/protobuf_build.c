@@ -12,16 +12,17 @@ void tesla_pb_dest_domain(UniversalMessage_Destination *d, uint32_t domain)
     d->sub_destination.domain = (UniversalMessage_Domain)domain;
 }
 
-void tesla_pb_dest_route(UniversalMessage_Destination *d,
-                         const uint8_t *addr, size_t len)
+int tesla_pb_dest_route(UniversalMessage_Destination *d,
+                        const uint8_t *addr, size_t len)
 {
     d->which_sub_destination =
         (pb_size_t)UniversalMessage_Destination_routing_address_tag;
     if (len > sizeof(d->sub_destination.routing_address.bytes)) {
-        len = sizeof(d->sub_destination.routing_address.bytes);
+        return -1;
     }
     d->sub_destination.routing_address.size = (pb_size_t)len;
     memcpy(d->sub_destination.routing_address.bytes, addr, len);
+    return 0;
 }
 
 int tesla_pb_encode_routable(const UniversalMessage_RoutableMessage *m,
@@ -52,7 +53,9 @@ int tesla_pb_encode_handshake(uint32_t domain,
     tesla_pb_dest_domain(&m.to_destination, domain);
 
     m.has_from_destination = true;
-    tesla_pb_dest_route(&m.from_destination, routing, 16);
+    if (tesla_pb_dest_route(&m.from_destination, routing, 16) != 0) {
+        return -1;
+    }
 
     m.which_payload =
         (pb_size_t)UniversalMessage_RoutableMessage_session_info_request_tag;

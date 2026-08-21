@@ -111,6 +111,7 @@ static uint8_t g_epoch[16] = { 'e','p','o','c','h','-', 0,1,2,3,4,5,6,7,8,9 };
 static int vehicle_session_response(const uint8_t challenge[16],
                                     uint32_t counter, uint32_t clock_time,
                                     uint32_t handle,
+                                    Signatures_Session_Info_Status status,
                                     uint8_t *resp, size_t resp_cap, size_t *resp_len)
 {
     Signatures_SessionInfo info;
@@ -127,6 +128,7 @@ static int vehicle_session_response(const uint8_t challenge[16],
     memcpy(info.epoch, g_epoch, 16);
     info.clock_time = clock_time;
     info.handle = handle;
+    info.status = status;
 
     os = pb_ostream_from_buffer(encoded, sizeof(encoded));
     if (!pb_encode(&os, Signatures_SessionInfo_fields, &info)) return -1;
@@ -223,6 +225,7 @@ static void test_handshake(void)
 
     // ...the vehicle responds (using shared K it derived from ECDH(v, C))...
     CHECK(vehicle_session_response(challenge, 6, 2650, 7,
+                                   Signatures_Session_Info_Status_SESSION_INFO_STATUS_OK,
                                    resp, sizeof(resp), &resp_len) == 0,
           "vehicle builds handshake response");
 
@@ -236,6 +239,7 @@ static void test_handshake(void)
     CHECK(s.handle == 7, "session handle from SessionInfo");
     CHECK(bytes_eq(s.epoch, g_epoch, 16), "session epoch from SessionInfo");
     CHECK(bytes_eq(s.vehicle_pubkey, g_v_pub, 65), "vehicle pubkey recorded");
+    CHECK(s.whitelisted, "key reported whitelisted (SessionInfo status OK)");
 }
 
 static void test_command_roundtrip(void)
@@ -263,6 +267,7 @@ static void test_command_roundtrip(void)
         uint8_t resp[256]; size_t rl = 0;
         g_now_ms = 2000000000u;
         CHECK(vehicle_session_response(challenge, 100, 12345, 3,
+                                       Signatures_Session_Info_Status_SESSION_INFO_STATUS_OK,
                                        resp, sizeof(resp), &rl) == 0,
               "setup: vehicle handshake response");
         CHECK(tesla_session_handshake(&s, &client, (const uint8_t *)VIN, strlen(VIN),
@@ -289,7 +294,7 @@ static void test_command_roundtrip(void)
     CHECK(request_hash[0] == (uint8_t)TESLA_SIG_TYPE_AES_GCM_PERSONALIZED,
           "request hash starts with sig_type AES_GCM_PERSONALIZED");
     CHECK(s.counter == 101, "session counter advanced on command");
-    CHECK(s.resp_armed == false, "response counter disarmed after send");
+    CHECK(s.replay_init == false, "replay window not primed until a response");
 
     // The vehicle decodes and decrypts the command.
     CHECK(tesla_pb_decode_routable(req, req_len, &cmd) == 0,
@@ -365,7 +370,7 @@ static void test_command_roundtrip(void)
     CHECK(from.sub_message.vehicleStatus.vehicleLockState ==
               VCSEC_VehicleLockState_E_VEHICLELOCKSTATE_LOCKED,
           "lock state decoded [LOCKED]");
-    phase = tesla_vcsec_ingest(&from, false);
+    phase = tesla_vcsec_ingest(&from);
     CHECK(phase == TESLA_VCSEC_STATUS, "state machine: vehicleStatus -> STATUS");
 
     // Replay protection: the identical response must now be rejected.
@@ -457,49 +462,231 @@ static void test_vcsec_state_machine(void)
 
     memset(&m, 0, sizeof(m));
     m.which_sub_message = (pb_size_t)VCSEC_FromVCSECMessage_vehicleStatus_tag;
-    CHECK(tesla_vcsec_ingest(&m, false) == TESLA_VCSEC_STATUS,
+    CHECK(tesla_vcsec_ingest(&m) == TESLA_VCSEC_STATUS,
           "vehicleStatus -> STATUS");
 
     memset(&m, 0, sizeof(m));
     m.which_sub_message = (pb_size_t)VCSEC_FromVCSECMessage_commandStatus_tag;
     m.sub_message.commandStatus.operationStatus =
         VCSEC_OperationStatus_E_OPERATIONSTATUS_WAIT;
-    CHECK(tesla_vcsec_ingest(&m, false) == TESLA_VCSEC_PENDING,
+    CHECK(tesla_vcsec_ingest(&m) == TESLA_VCSEC_PENDING,
           "WAIT -> PENDING (busy, keep collecting)");
 
     memset(&m, 0, sizeof(m));
     m.which_sub_message = (pb_size_t)VCSEC_FromVCSECMessage_commandStatus_tag;
     m.sub_message.commandStatus.operationStatus =
         VCSEC_OperationStatus_E_OPERATIONSTATUS_ERROR;
-    CHECK(tesla_vcsec_ingest(&m, false) == TESLA_VCSEC_PENDING,
+    CHECK(tesla_vcsec_ingest(&m) == TESLA_VCSEC_PENDING,
           "OPERATIONSTATUS_ERROR -> PENDING (wait for specific error)");
 
     memset(&m, 0, sizeof(m));
     m.which_sub_message = (pb_size_t)VCSEC_FromVCSECMessage_commandStatus_tag;
     m.sub_message.commandStatus.which_sub_message =
         (pb_size_t)VCSEC_CommandStatus_whitelistOperationStatus_tag;
-    CHECK(tesla_vcsec_ingest(&m, false) == TESLA_VCSEC_DONE,
+    CHECK(tesla_vcsec_ingest(&m) == TESLA_VCSEC_DONE,
           "whitelistOperationStatus -> DONE (terminal)");
 
     memset(&m, 0, sizeof(m));
     m.which_sub_message = (pb_size_t)VCSEC_FromVCSECMessage_commandStatus_tag;
     m.sub_message.commandStatus.operationStatus =
         VCSEC_OperationStatus_E_OPERATIONSTATUS_OK;
-    CHECK(tesla_vcsec_ingest(&m, false) == TESLA_VCSEC_DONE,
+    CHECK(tesla_vcsec_ingest(&m) == TESLA_VCSEC_DONE,
           "signedMessageStatus OK -> DONE");
 
     memset(&m, 0, sizeof(m));
     m.which_sub_message = (pb_size_t)VCSEC_FromVCSECMessage_nominalError_tag;
     m.sub_message.nominalError.genericError = 1;
-    CHECK(tesla_vcsec_ingest(&m, false) == TESLA_VCSEC_ERROR,
+    CHECK(tesla_vcsec_ingest(&m) == TESLA_VCSEC_ERROR,
           "nominalError -> ERROR");
 
-    // Empty message: success for non-whitelist, ignored for whitelist pairing.
+    // Empty message: terminal success (no application payload).
     memset(&m, 0, sizeof(m));
-    CHECK(tesla_vcsec_ingest(&m, false) == TESLA_VCSEC_DONE,
-          "empty (non-whitelist) -> DONE (success)");
-    CHECK(tesla_vcsec_ingest(&m, true) == TESLA_VCSEC_PENDING,
-          "empty (whitelist pairing) -> PENDING (keep waiting)");
+    CHECK(tesla_vcsec_ingest(&m) == TESLA_VCSEC_DONE,
+          "empty -> DONE (success)");
+}
+
+static void test_handshake_negative(void)
+{
+    uint8_t challenge[16] = {0xAB,0xAB,0xAB,0xAB,0xAB,0xAB,0xAB,0xAB,
+                             0xAB,0xAB,0xAB,0xAB,0xAB,0xAB,0xAB,0xAB};
+    uint8_t resp[256]; size_t resp_len = 0;
+    tesla_session_t s;
+    tesla_keypair_t client;
+
+    memcpy(client.priv, g_c_priv, 32);
+    memcpy(client.pub, g_c_pub, 65);
+    tesla_session_init(&s, TESLA_DOMAIN_VEHICLE_SECURITY, test_now_ms);
+
+    CHECK(vehicle_session_response(challenge, 6, 2650, 7,
+                                   Signatures_Session_Info_Status_SESSION_INFO_STATUS_OK,
+                                   resp, sizeof(resp), &resp_len) == 0,
+          "neg-handshake: build valid handshake response");
+
+    // Corrupt one byte of the HMAC session-info tag: authentication must fail
+    // and the session must not be trusted.
+    {
+        UniversalMessage_RoutableMessage m;
+        uint8_t tampered[256]; size_t tl = 0;
+        if (tesla_pb_decode_routable(resp, resp_len, &m) == 0) {
+            m.sub_sigData.signature_data.sig_type.session_info_tag.tag[0] ^= 0xFF;
+            if (tesla_pb_encode_routable(&m, tampered, sizeof(tampered), &tl) == 0) {
+                CHECK(tesla_session_handshake(&s, &client,
+                                              (const uint8_t *)VIN, strlen(VIN),
+                                              challenge, tampered, tl,
+                                              dummy_rng, NULL) != 0,
+                      "neg-handshake: tampered session-info HMAC rejected");
+            } else { printf("FAIL: re-encode tampered handshake\n"); g_fail++; }
+        } else { printf("FAIL: decode handshake for tamper test\n"); g_fail++; }
+    }
+    CHECK(!s.valid, "neg-handshake: session stays invalid after rejected handshake");
+
+    // A KEY_NOT_ON_WHITELIST SessionInfo is still a valid-HMAC session, but it
+    // must be surfaced as not-whitelisted so the client fires the enroll
+    // canary instead of a misleading "handshake complete" (review S5).
+    {
+        uint8_t resp2[256]; size_t rl2 = 0;
+        tesla_session_t s2;
+        tesla_keypair_t c2;
+        memcpy(c2.priv, g_c_priv, 32);
+        memcpy(c2.pub, g_c_pub, 65);
+        CHECK(vehicle_session_response(challenge, 6, 2650, 7,
+                                       Signatures_Session_Info_Status_SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST,
+                                       resp2, sizeof(resp2), &rl2) == 0,
+              "neg-handshake: build not-whitelisted handshake response");
+        tesla_session_init(&s2, TESLA_DOMAIN_VEHICLE_SECURITY, test_now_ms);
+        CHECK(tesla_session_handshake(&s2, &c2, (const uint8_t *)VIN, strlen(VIN),
+                                      challenge, resp2, rl2, dummy_rng, NULL) == 0,
+              "neg-handshake: valid-HMAC handshake completes for non-whitelisted key");
+        CHECK(s2.whitelisted == false,
+              "neg-handshake: key marked NOT whitelisted");
+    }
+}
+
+static void test_replay_window(void)
+{
+    // Fresh VCSEC session; SessionInfo sets vehicle clock + counter.
+    tesla_session_t s;
+    tesla_keypair_t client;
+    uint8_t vpayload[2] = {0xAA, 0xBB};
+    uint8_t plain[256];
+
+    memcpy(client.priv, g_c_priv, 32);
+    memcpy(client.pub, g_c_pub, 65);
+    g_now_ms = 2000000000u;
+    tesla_session_init(&s, TESLA_DOMAIN_VEHICLE_SECURITY, test_now_ms);
+    {
+        uint8_t challenge[16] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
+        uint8_t resp[256]; size_t rl = 0;
+        CHECK(vehicle_session_response(challenge, 500, 9000, 9,
+                                       Signatures_Session_Info_Status_SESSION_INFO_STATUS_OK,
+                                       resp, sizeof(resp), &rl) == 0,
+              "rw: vehicle handshake response");
+        CHECK(tesla_session_handshake(&s, &client, (const uint8_t *)VIN, strlen(VIN),
+                                      challenge, resp, rl, dummy_rng, NULL) == 0,
+              "rw: handshake");
+    }
+
+    // Build a command so we have a real request-hash binding for the responses.
+    uint8_t routing[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    uint8_t uuid[16]    = {9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9};
+    uint8_t req[512]; size_t req_len = 0;
+    uint8_t request_hash[33]; size_t req_hash_len = 0;
+    CHECK(tesla_session_build_command(&s, (const uint8_t *)VIN, strlen(VIN),
+                                      TESLA_DOMAIN_VEHICLE_SECURITY,
+                                      vpayload, sizeof(vpayload), routing, uuid,
+                                      req, sizeof(req), &req_len,
+                                      request_hash, &req_hash_len,
+                                      dummy_rng, NULL) == 0,
+          "rw: build command (request-hash binding)");
+
+    // Build an encrypted response for counter _c and show it in (*_olen).
+    #define RW_BUILD(_c, _out, _olen) do { \
+        size_t _rl = 0; \
+        if (vehicle_encrypt_response(vpayload, sizeof(vpayload), (_c), \
+                                     request_hash, req_hash_len, \
+                                     (_out), 512, &_rl) != 0 || _rl == 0) { \
+            printf("FAIL: rw: vehicle response build c=" #_c "\n"); g_fail++; \
+        } else { *(_olen) = _rl; } \
+    } while (0)
+
+    // (1) First legitimate response primes the replay window.
+    {
+        uint8_t resp[512]; size_t rl = 0, pl = 0; uint32_t fl = 0;
+        RW_BUILD(501, resp, &rl);
+        CHECK(tesla_session_process_response(&s, (const uint8_t *)VIN, strlen(VIN),
+                                             request_hash, req_hash_len,
+                                             resp, rl, plain, sizeof(plain), &pl, &fl) == 0,
+              "rw: legit first response accepted (primes window)");
+    }
+
+    // (2) C1: a forged frame with a sky-high counter that FAILS GCM auth must
+    //     NOT advance the window; the next legitimate response still works.
+    {
+        uint8_t forged[512]; size_t frl = 0;
+        uint8_t resp[512]; size_t rl = 0, pl = 0; uint32_t fl = 0;
+        RW_BUILD(0xFFFFFFF0u, forged, &frl);
+        {
+            UniversalMessage_RoutableMessage m;
+            uint8_t tmp[512]; size_t tl = 0;
+            if (tesla_pb_decode_routable(forged, frl, &m) == 0) {
+                m.sub_sigData.signature_data.sig_type.AES_GCM_Response_data.tag[0] ^= 0xFF;
+                if (tesla_pb_encode_routable(&m, tmp, sizeof(tmp), &tl) == 0) {
+                    CHECK(tesla_session_process_response(&s, (const uint8_t *)VIN, strlen(VIN),
+                                                         request_hash, req_hash_len,
+                                                         tmp, tl, plain, sizeof(plain),
+                                                         &pl, &fl) == -1,
+                          "rw: forged high-counter frame rejected by auth");
+                }
+            }
+        }
+        RW_BUILD(502, resp, &rl);
+        CHECK(tesla_session_process_response(&s, (const uint8_t *)VIN, strlen(VIN),
+                                             request_hash, req_hash_len,
+                                             resp, rl, plain, sizeof(plain), &pl, &fl) == 0,
+              "rw: legit response still accepted after forged frame (C1)");
+    }
+
+    #undef RW_BUILD
+
+    // (3) uint32 counter rollover: a response counter of 0xFFFFFFFF (max) is
+    //     accepted as the first authenticated response of a fresh session.
+    {
+        tesla_session_t s2;
+        tesla_keypair_t c2;
+        uint8_t ch[16] = {3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3};
+        uint8_t hs[256]; size_t hsl = 0;
+        memcpy(c2.priv, g_c_priv, 32);
+        memcpy(c2.pub, g_c_pub, 65);
+        tesla_session_init(&s2, TESLA_DOMAIN_VEHICLE_SECURITY, test_now_ms);
+        CHECK(vehicle_session_response(ch, 0xFFFFFFFEu, 9000, 1,
+                                       Signatures_Session_Info_Status_SESSION_INFO_STATUS_OK,
+                                       hs, sizeof(hs), &hsl) == 0 &&
+              tesla_session_handshake(&s2, &c2, (const uint8_t *)VIN, strlen(VIN),
+                                      ch, hs, hsl, dummy_rng, NULL) == 0,
+              "rw-rollover: handshake with session counter near max");
+
+        uint8_t r2[16] = {4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4};
+        uint8_t u2[16] = {5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5};
+        uint8_t req2[512]; size_t req2_len = 0, rh2_len = 0;
+        uint8_t rh2[33];
+        CHECK(tesla_session_build_command(&s2, (const uint8_t *)VIN, strlen(VIN),
+                                          TESLA_DOMAIN_VEHICLE_SECURITY,
+                                          vpayload, sizeof(vpayload), r2, u2,
+                                          req2, sizeof(req2), &req2_len,
+                                          rh2, &rh2_len, dummy_rng, NULL) == 0,
+              "rw-rollover: build command");
+        {
+            uint8_t rr[512]; size_t rrl = 0, pl = 0; uint32_t fl = 0;
+            if (vehicle_encrypt_response(vpayload, sizeof(vpayload), 0xFFFFFFFFu,
+                                         rh2, rh2_len, rr, sizeof(rr), &rrl) == 0 &&
+                rrl > 0) {
+                CHECK(tesla_session_process_response(&s2, (const uint8_t *)VIN, strlen(VIN),
+                                                     rh2, rh2_len,
+                                                     rr, rrl, plain, sizeof(plain), &pl, &fl) == 0,
+                      "rw-rollover: 0xFFFFFFFF first response accepted");
+            } else { printf("FAIL: rw-rollover: build response\n"); g_fail++; }
+        }
+    }
 }
 
 static void test_protobuf_primitives(void)
@@ -564,8 +751,10 @@ int main(void)
 
     test_protobuf_primitives();
     test_handshake();
+    test_handshake_negative();
     test_command_roundtrip();
     test_vcsec_state_machine();
+    test_replay_window();
 
     printf("\n%d failure(s)\n", g_fail);
     return g_fail ? 1 : 0;

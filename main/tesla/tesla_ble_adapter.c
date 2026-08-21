@@ -30,7 +30,6 @@ static const char *TAG = "tesla_ble";
 // Service:  00000211-b2d1-43f0-9b88-960cebf8b91e
 // Write:    00000212-b2d1-43f0-9b88-960cebf8b91e  (write with response)
 // Indicate: 00000213-b2d1-43f0-9b88-960cebf8b91e
-#define TESLA_UUID_TIMEOUT_MS 15000
 #define TESLA_CONNECT_TIMEOUT_MS 20000
 #define TESLA_RX_BUF 600
 
@@ -360,6 +359,15 @@ static int central_gap_event_handler(struct ble_gap_event *event, void *arg)
             break;
         }
         s_central.conn_handle = event->connect.conn_handle;
+        // A straggler from a timed-out/cancelled connect (review S3): the
+        // waiter gave up or we cancelled, so drop it now before entering
+        // discovery — otherwise it would wedge the state machine at
+        // ST_DISCOVERING forever and leak a scarce BLE slot.
+        if (s_central.state == ST_IDLE) {
+            ESP_LOGW(TAG, "dropping late central connection (timed out/cancelled)");
+            ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+            break;
+        }
         s_central.state = ST_DISCOVERING;
         ESP_LOGI(TAG, "central connected (handle=%u)", s_central.conn_handle);
         // GATT procedures run serially; mtu_cb then starts service discovery.
@@ -458,6 +466,11 @@ esp_err_t tesla_ble_connect(const void *addr, uint32_t timeout_ms)
         ESP_LOGW(TAG, "connect timed out");
         if (s_central.conn_handle != 0) {
             ble_gap_terminate(s_central.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        } else {
+            // Connection request still pending at the controller: cancel it so
+            // no late CONNECT event can arrive and wedge the state machine
+            // (review S3).
+            ble_gap_conn_cancel();
         }
         s_central.state = ST_IDLE;
         return ESP_ERR_TIMEOUT;
@@ -480,7 +493,7 @@ esp_err_t tesla_ble_send(const uint8_t *data, size_t len)
         s_central.tx_handle == 0) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (len > 65535 || total > sizeof(framed)) {
+    if (total > sizeof(framed)) {
         return ESP_ERR_INVALID_ARG;
     }
     framed[0] = (uint8_t)(len >> 8);
@@ -513,11 +526,6 @@ void tesla_ble_disconnect(void)
         ble_gap_terminate(s_central.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
     }
     central_fail_cleanup();
-}
-
-bool tesla_ble_is_connected(void)
-{
-    return s_central.state == ST_READY;
 }
 
 void tesla_ble_set_rx_cb(tesla_ble_rx_fn_t cb, void *arg)

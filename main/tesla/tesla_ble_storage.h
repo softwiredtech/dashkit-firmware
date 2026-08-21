@@ -15,6 +15,11 @@
  * Matches the plan: "plaintext NVS private key initially (matches the ESPHome
  * reference)" — no key material is ever logged; flash-encryption / SE hardening
  * is the documented release-blocker risk (plan §7).
+ *
+ * RELEASE BLOCKER (do not ship a DRIVER-role build with this): the private key
+ * lives plaintext in NVS. Flash encryption and/or a secure-element-backed key
+ * must land before any production/DRIVER-role release (plan §7 / ADR §). See
+ * plan §7 "release-blocker candidate".
  */
 
 #pragma once

@@ -52,9 +52,6 @@ esp_err_t tesla_ble_send(const uint8_t *data, size_t len);
 // connected.
 void tesla_ble_disconnect(void);
 
-// True while a central connection is established.
-bool tesla_ble_is_connected(void);
-
 #ifdef __cplusplus
 }
 #endif

@@ -31,8 +31,11 @@ extern "C" {
 
 // Convenience destination fillers.
 void tesla_pb_dest_domain(UniversalMessage_Destination *d, uint32_t domain);
-void tesla_pb_dest_route(UniversalMessage_Destination *d,
-                         const uint8_t *addr, size_t len);
+// Fill a routing-address destination. Returns 0 on success, -1 if `len`
+// exceeds the 16-byte routing-address field (rejects rather than silently
+// truncating — review N6; all current callers pass exactly 16).
+int tesla_pb_dest_route(UniversalMessage_Destination *d,
+                        const uint8_t *addr, size_t len);
 
 // Encode a RoutableMessage carrying a SessionInfoRequest for `domain`, with
 // the client public key and a caller-chosen 16-byte `challenge` (must equal
