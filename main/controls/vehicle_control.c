@@ -56,9 +56,7 @@ static bool is_config_opcode(uint8_t opcode)
 {
     return opcode == VC_CMD_BATTERY_PREHEAT ||
            opcode == VC_CMD_MULTI_FINGER_ACTION ||
-           opcode == VC_CMD_WIPER_OFF_ENABLE ||
-           opcode == VC_CMD_CLIMATE_KEEP_ENABLE ||
-           opcode == VC_CMD_CLIMATE_KEEP_DURATION;
+           opcode == VC_CMD_WIPER_OFF_ENABLE;
 }
 
 static const vc_command_t *find_command(uint8_t opcode)

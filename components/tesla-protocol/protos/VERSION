@@ -1,0 +1,15 @@
+Upstream: teslamotors/vehicle-command
+Pinned commit: f97fa1e4bf617a364c72b85cb5d859528abeda67
+Date:           2026-07-31
+
+The *.proto files in this directory are copied verbatim from the upstream
+pkg/protocol/protobuf/ at the pinned commit above. Bump the pin by updating
+this file and re-copying from upstream.
+
+Licensing: Apache-2.0 (see the upstream LICENSE). Our nanopb bindings
+generated from these schemas inherit the Apache-2.0 grant.
+
+Reference material used during development (not vendored):
+  pkg/protocol/protocol.md                      protocol spec + test vectors
+  internal/authentication/{metadata,peer}.go    metadata TLV / request hash
+  internal/authentication/{crypto,native}.go    key agreement + AES-GCM

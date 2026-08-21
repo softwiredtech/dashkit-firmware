@@ -12,7 +12,6 @@ idf_component_register(
         "automation/automation_manager.c"
         "automation/wiper_off.c"
         "automation/multi_finger.c"
-        "automation/climate_keep.c"
         "ble/ble_server.c"
         "ble/ble_ota.c"
     INCLUDE_DIRS
@@ -29,6 +28,9 @@ idf_component_register(
         bt
         esp_timer
         app_update
+        # Tesla vehicle-command crypto/protocol component (Phase 0: crypto +
+        # session layers; no BLE wiring yet).
+        tesla-protocol
 )
 
 # DBC codegen: regenerate the committed dbc_generated.{c,h} from the vendored
