@@ -29,8 +29,10 @@ idf_component_register(
         "automation/automation_manager.c"
         "automation/wiper_off.c"
         "automation/multi_finger.c"
+        "automation/climate_keep.c"
         "ble/ble_server.c"
         "ble/ble_ota.c"
+        "ble/ble_appchan.c"
         ${TESLA_SRCS}
     INCLUDE_DIRS
         "."

@@ -102,13 +102,6 @@ static int discovery_event_handler(struct ble_gap_event *event, void *arg)
                  (int)fields.name_len, (const char *)fields.name, (int)disc->rssi,
                  mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
     }
-    // Persist every distinct advertisement name, flagging Tesla matches, so an
-    // in-car run made with no live serial monitor is read off at the next boot
-    // and we can see exactly what the car actually broadcasts.
-    tesla_advert_log_add(fields.name, fields.name_len,
-                         (uint8_t)(fmt != TESLA_NAME_NONE), (uint8_t)fmt,
-                         mac, disc->rssi);
-
     // Phase 3 auto-provision (unattended enrollment): if this is OUR car (by
     // VIN-derived name), feed the pairing task the address we just discovered
     // plus the target VIN, so enrollment arms itself with no console/app input.
@@ -197,14 +190,6 @@ static void scan_wait_task(void *arg)
 
 esp_err_t tesla_ble_adapter_observer_init(void)
 {
-    // Confirm power-ons: the boot counter advances every boot, so an unattended
-    // run (e.g. in the car) shows up as a gap/advance in the sequence even if it
-    // recorded no advertisements.
-    ESP_LOGI(TAG, "boot #%u - dumping previous run's advertisement log",
-             (unsigned)tesla_storage_boot_count());
-    // Dump the previous run's advertisement names immediately, so a bench run
-    // done without a serial monitor is read off at the next boot.
-    tesla_advert_log_dump();
     if (xTaskCreate(scan_wait_task, "tesla_scan", 3072, NULL, 5, NULL) != pdPASS) {
         ESP_LOGE(TAG, "failed to create scan task");
         return ESP_ERR_NO_MEM;

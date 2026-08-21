@@ -1,5 +1,6 @@
 #include "ble_server.h"
 #include "ble_ota.h"
+#include "ble_appchan.h"
 #include "can_filter.h"
 #include "can_manager.h"
 #include "can_interface.h"
@@ -722,8 +723,8 @@ static const struct ble_gatt_svc_def s_can_svc_def[] = {
     { 0 },
 };
 
-// Combined GATT services: CAN + OTA + terminator
-static struct ble_gatt_svc_def s_gatt_svcs[3];
+// Combined GATT services: CAN + OTA + app-channel + terminator
+static struct ble_gatt_svc_def s_gatt_svcs[4];
 
 // ---------------------------------------------------------------------------
 // NimBLE host sync callback
@@ -809,11 +810,13 @@ esp_err_t ble_server_init(void)
     // Wire up the NVS-backed key store so bonds survive a reboot.
     ble_store_config_init();
 
-    // Build combined GATT service table: CAN + OTA
+    // Build combined GATT service table: CAN + OTA + app-channel
     const struct ble_gatt_svc_def *ota_svc = ble_ota_get_service_def();
-    s_gatt_svcs[0] = s_can_svc_def[0];  // CAN service
-    s_gatt_svcs[1] = ota_svc[0];        // OTA service
-    memset(&s_gatt_svcs[2], 0, sizeof(s_gatt_svcs[2]));  // Terminator
+    const struct ble_gatt_svc_def *appchan_svc = ble_appchan_get_service_def();
+    s_gatt_svcs[0] = s_can_svc_def[0];   // CAN service
+    s_gatt_svcs[1] = ota_svc[0];         // OTA service
+    s_gatt_svcs[2] = appchan_svc[0];     // app-channel (Tesla state/commands)
+    memset(&s_gatt_svcs[3], 0, sizeof(s_gatt_svcs[3]));  // Terminator
 
     // Register GATT services
     ble_svc_gap_init();

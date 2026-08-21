@@ -5,6 +5,7 @@
 #include "tesla_ble_client.h"
 #include "tesla_ble_adapter.h"
 #include "tesla_ble_storage.h"
+#include "ble_appchan.h"
 #include "session.h"
 #include "protobuf_build.h"
 #include "vcsec.pb.h"
@@ -32,6 +33,13 @@ static const char *TAG = "tesla_client";
 // hammers a sleeping car and keeps its VCSEC awake).
 #define RECONNECT_BASE_S     10
 #define RECONNECT_MAX_S      300
+// Persistent-poll model (matches esphome-tesla-ble): hold the BLE link open and
+// poll VCSEC vehicleStatus at STATUS_POLL_MS instead of idle-disconnecting per
+// cycle. Re-report "not connected" to the app only after the link has been down
+// for STATUS_DEBOUNCE_MS (a transient RF drop shouldn't flip the phone's tile).
+#define STATUS_POLL_MS       (POLL_INTERVAL_S * 1000)
+#define RECONNECT_RETRY_MS   10000
+#define STATUS_DEBOUNCE_MS   300000
 
 // Max BLE frame (framing + payload). 320 B is fine for Phase 2/3 VCSEC
 // (GET_STATUS responses are small), but Phase 4 Infotainment responses
@@ -181,6 +189,30 @@ static const char *presence_name(int v)
     }
 }
 
+// App-channel (CADA0202) status reporting. link 0x00/0x05/0x03/0x04 are owned by
+// the pairing task (no key staged/pairing); this client owns 0x01/0x02 (enrolled,
+// not connected / connected + live status). Throttle non-connected reports so a
+// fast reconnect loop can't flood the phone.
+static uint8_t s_last_link = 0xFF;
+static void report_app_link(uint8_t link, int presence, int lock, int sleep)
+{
+    uint8_t p = 0xFF, l = 0xFF, s8 = 0xFF;
+    if (presence == VCSEC_UserPresence_E_VEHICLE_USER_PRESENCE_PRESENT) p = 1;
+    else if (presence == VCSEC_UserPresence_E_VEHICLE_USER_PRESENCE_NOT_PRESENT) p = 0;
+    if (lock == VCSEC_VehicleLockState_E_VEHICLELOCKSTATE_LOCKED) l = 1;
+    else if (lock == VCSEC_VehicleLockState_E_VEHICLELOCKSTATE_UNLOCKED) l = 0;
+    if (sleep == VCSEC_VehicleSleepStatus_E_VEHICLE_SLEEP_STATUS_ASLEEP) s8 = 1;
+    else if (sleep == VCSEC_VehicleSleepStatus_E_VEHICLE_SLEEP_STATUS_AWAKE) s8 = 0;
+
+    // Always refresh connected status (presence/lock/sleep change); throttle the
+    // rest so a brief gap doesn't spam identical 0x01 frames.
+    if (link == s_last_link && link != TESLA_LINK_ENROLLED_CONNECTED) {
+        return;
+    }
+    s_last_link = link;
+    ble_appchan_report_status(link, p, l, s8, 0, TESLA_FAULT_NONE);
+}
+
 // Build + send GET_STATUS and collect responses. Returns a terminal result so
 // the poll loop can stop early instead of firing polls at a dead link:
 //   ESP_OK            - a vehicleStatus (or terminal DONE) was obtained
@@ -265,6 +297,8 @@ static esp_err_t refresh_status(tesla_session_t *sess, const char *vin,
             got_status = true;
             ESP_LOGI(TAG, "status: presence=%s lock=%s sleep=%s",
                      presence_name(presence), lock_name(lock), sleep_name(sleep));
+            // Push to the phone app-channel (Phase 4).
+            report_app_link(TESLA_LINK_ENROLLED_CONNECTED, presence, lock, sleep);
             if (presence != *last_presence || lock != *last_lock || sleep != *last_sleep) {
                 ESP_LOGI(TAG, "status delta: presence %s->%s, lock %s->%s, sleep %s->%s",
                          presence_name(*last_presence), presence_name(presence),
@@ -309,31 +343,38 @@ static void drain_rxq(void)
     }
 }
 
+// Reference implementations (esphome-tesla-ble) debounce the "not connected" /
+// unknown state so a transient RF drop or brief reconnect gap doesn't flip the
+// phone's tile. Only report ENROLLED_NOT_CONNECTED once the link has been down
+// for STATUS_DEBOUNCE_MS since the last good poll; never before the first one.
+static void report_link_debounced(uint64_t *last_good_ms)
+{
+    if (*last_good_ms != 0 &&
+        (int64_t)(now_ms() - *last_good_ms) < STATUS_DEBOUNCE_MS) {
+        return;   // recently polled OK; hold "connected" (debounce the flap)
+    }
+    report_app_link(TESLA_LINK_ENROLLED_NOT_CONNECTED, -1, -1, -1);
+}
+
 static void client_task(void *arg)
 {
     (void)arg;
     tesla_keypair_t key;
     tesla_car_addr_t addr;
     char vin[32];
-    bool configured = false;
-    uint32_t backoff_s = RECONNECT_BASE_S;
+    uint64_t last_good_ms = 0;   // last successful status poll; 0 = never yet
 
     while (true) {
         if (!load_config(&key, &addr, vin)) {
-            if (!configured) {
-                ESP_LOGI(TAG, "no enrolled Tesla key/link yet (pairing is Phase 3); waiting");
-                configured = false;
-            }
+            last_good_ms = 0;
+            ESP_LOGI(TAG, "no enrolled Tesla key/link yet (pairing is Phase 3); waiting");
             vTaskDelay(pdMS_TO_TICKS(NO_KEY_DELAY_S * 1000));
             continue;
         }
-        configured = true;
-        bool ok = false;
 
-        // Re-assert our RX callback each cycle: the pairing task owns the RX
-        // path during enrollment and hands it back once a key exists. Drain
-        // any stale frames so a late reply can't linger/misroute at the next
-        // poll.
+        // Re-assert our RX callback each connect: the pairing task owns the RX
+        // path during enrollment and hands it back once a key exists. Drain any
+        // stale frames so a late reply can't linger/misroute.
         tesla_ble_set_rx_cb(client_rx_cb, NULL);
         drain_rxq();
 
@@ -342,13 +383,13 @@ static void client_task(void *arg)
                  addr.val[1], addr.val[0]);
         if (tesla_ble_connect(&addr, CONNECT_TIMEOUT_MS) != ESP_OK) {
             ESP_LOGW(TAG, "connect failed");
-            // Tear down any half-opened/ghost link (review S3) so the next
-            // cycle starts from ST_IDLE instead of wedging the state machine.
             tesla_ble_disconnect();
-            goto reconnect;
+            report_link_debounced(&last_good_ms);
+            vTaskDelay(pdMS_TO_TICKS(RECONNECT_RETRY_MS));
+            continue;
         }
 
-        // VCSEC handshake (fresh each cycle — the boot-relative clock cannot
+        // VCSEC handshake (fresh each connect — the boot-relative clock cannot
         // carry a session's vehicle-clock offset across a reboot, so the client
         // always re-syncs rather than caching a stale epoch/offset).
         tesla_session_t sess;
@@ -362,72 +403,56 @@ static void client_task(void *arg)
                                               key.pub, routing, challenge,
                                               req, sizeof(req), &req_len) != 0) {
                 ESP_LOGE(TAG, "failed to build handshake request");
-                goto reconnect;
+                goto link_down;
             }
             if (tesla_ble_send(req, req_len) != ESP_OK) {
                 ESP_LOGW(TAG, "handshake send failed");
-                goto reconnect;
+                goto link_down;
             }
             if (recv_for_route(resp, sizeof(resp), &resp_len,
                                RESPONSE_TIMEOUT_MS, routing) != ESP_OK) {
                 ESP_LOGW(TAG, "no handshake response (car asleep?)");
-                goto reconnect;
+                goto link_down;
             }
             if (tesla_session_handshake(&sess, &key, (const uint8_t *)vin, strlen(vin),
                                         challenge, resp, resp_len,
                                         hw_rng, NULL) != 0) {
                 ESP_LOGW(TAG, "handshake rejected (key not enrolled?)");
-                goto reconnect;
+                goto link_down;
             }
             if (!sess.whitelisted) {
                 // HMAC was valid (we have K), but the car reports this key is
                 // NOT on the whitelist — un-enrolled, so poll will fail.
                 ESP_LOGW(TAG, "handshake OK, but key NOT on whitelist "
                               "(enroll via Phase 3 pairing)");
-                goto reconnect;
+                goto link_down;
             }
             ESP_LOGI(TAG, "VCSEC handshake complete (counter=%u)",
                      (unsigned)sess.counter);
         }
 
-        // GET_STATUS poll while connected; log presence/lock/sleep deltas.
-        // Abort the poll the moment a refresh fails (link dropped / car
-        // unresponsive) instead of firing all POLLS_PER_CONN polls at a dead
-        // link.
+        // Persistent poll over the open link — do NOT idle-disconnect per cycle
+        // (matches esphome-tesla-ble). VCSEC polling is low-power and does not
+        // wake the car. Abort on the first refresh failure and reconnect at the
+        // top; the debounced report keeps the app "connected" across transient
+        // RF drops instead of flapping on every cycle.
         {
             int last_presence = -1, last_lock = -1, last_sleep = -1;
-            for (int i = 0; i < POLLS_PER_CONN; i++) {
-                // Clear stale/extra frames the car pushed during the idle wait
-                // (VCSEC may emit more indications than we consume) so the
-                // queue can't back up the next response — each request re-reads
-                // its own response by fresh routing, so nothing legitimate is
-                // discarded here.
+            for (;;) {
                 drain_rxq();
                 if (refresh_status(&sess, vin,
                                    &last_presence, &last_lock, &last_sleep) != ESP_OK) {
                     break;
                 }
-                ok = true;
-                vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_S * 1000));
+                last_good_ms = now_ms();
+                vTaskDelay(pdMS_TO_TICKS(STATUS_POLL_MS));
             }
         }
 
-    reconnect:
-        // Idle-disconnect (load-bearing, plan §6): free the car link, then
-        // back off so a sleeping/unreachable car isn't hammered (reset the
-        // backoff after a healthy cycle).
+    link_down:
         tesla_ble_disconnect();
-        if (ok) {
-            backoff_s = RECONNECT_BASE_S;
-        } else {
-            backoff_s *= 2;
-            if (backoff_s > RECONNECT_MAX_S) {
-                backoff_s = RECONNECT_MAX_S;
-            }
-        }
-        ESP_LOGI(TAG, "cycle %s; reconnecting in %lu s",
-                 ok ? "ok" : "failed", (unsigned long)backoff_s);
-        vTaskDelay(pdMS_TO_TICKS(backoff_s * 1000));
+        report_link_debounced(&last_good_ms);
+        vTaskDelay(pdMS_TO_TICKS(RECONNECT_RETRY_MS));
     }
 }
 

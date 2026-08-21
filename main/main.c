@@ -9,6 +9,7 @@
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
+#include "ble_appchan.h"
 #include "tesla_ble_adapter.h"
 #include "tesla_ble_client.h"
 #include "tesla_pairing.h"
@@ -223,6 +224,7 @@ void app_main(void)
     // BLE
     ESP_ERROR_CHECK(ble_server_init());
     ESP_ERROR_CHECK(ble_ota_init());
+    ESP_ERROR_CHECK(ble_appchan_init());
     ESP_ERROR_CHECK(ble_server_start());
 
 #if defined(CONFIG_DASHKIT_TESLA_BLE)
