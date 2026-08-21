@@ -708,10 +708,11 @@ static void test_protobuf_primitives(void)
               VCSEC_InformationRequestType_INFORMATION_REQUEST_TYPE_GET_STATUS,
           "status is InformationRequest/GET_STATUS");
 
-    // Whitelist builder (Phase 3): role + key must survive the round trip.
+    // Whitelist builder (Phase 3): role + key + form factor must survive.
     uint8_t pk[65];
     unhex(CLIENT_PUB_HEX, pk, sizeof(pk));
-    CHECK(tesla_pb_encode_vcsec_whitelist(pk, Keys_Role_ROLE_CHARGING_MANAGER, 0,
+    CHECK(tesla_pb_encode_vcsec_whitelist(pk, Keys_Role_ROLE_CHARGING_MANAGER,
+                                          VCSEC_KeyFormFactor_KEY_FORM_FACTOR_ANDROID_DEVICE,
                                           buf, sizeof(buf), &n) == 0 && n > 0,
           "whitelist payload encodes");
     in = pb_istream_from_buffer(buf, n);
@@ -724,6 +725,10 @@ static void test_protobuf_primitives(void)
           um.sub_message.WhitelistOperation.sub_message
               .addKeyToWhitelistAndAddPermissions.keyRole == Keys_Role_ROLE_CHARGING_MANAGER,
           "addKeyToWhitelistAndAddPermissions carries CHARGING_MANAGER role");
+    CHECK(um.sub_message.WhitelistOperation.has_metadataForKey &&
+          um.sub_message.WhitelistOperation.metadataForKey.keyFormFactor ==
+              VCSEC_KeyFormFactor_KEY_FORM_FACTOR_ANDROID_DEVICE,
+          "whitelist op carries ANDROID_DEVICE form factor");
     (void)out; (void)o; (void)fm;
 }
 

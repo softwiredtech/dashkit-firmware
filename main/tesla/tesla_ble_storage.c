@@ -59,6 +59,24 @@ esp_err_t tesla_storage_load_key(tesla_keypair_t *key)
     return err;
 }
 
+esp_err_t tesla_storage_load_vin(char *vin, size_t cap)
+{
+    nvs_handle_t h;
+    esp_err_t err;
+
+    if (vin == NULL || cap < 18) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    err = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    size_t len = cap;
+    err = nvs_get_str(h, KEY_VIN, vin, &len);
+    nvs_close(h);
+    return err;
+}
+
 esp_err_t tesla_storage_save_key(const tesla_keypair_t *key)
 {
     nvs_handle_t h;
@@ -78,24 +96,6 @@ esp_err_t tesla_storage_save_key(const tesla_keypair_t *key)
     if (err == ESP_OK) {
         err = nvs_commit(h);
     }
-    nvs_close(h);
-    return err;
-}
-
-esp_err_t tesla_storage_load_vin(char *vin, size_t cap)
-{
-    nvs_handle_t h;
-    esp_err_t err;
-
-    if (vin == NULL || cap < 18) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    err = nvs_open(NVS_NS, NVS_READONLY, &h);
-    if (err != ESP_OK) {
-        return err;
-    }
-    size_t len = cap;
-    err = nvs_get_str(h, KEY_VIN, vin, &len);
     nvs_close(h);
     return err;
 }
@@ -161,16 +161,9 @@ esp_err_t tesla_storage_save_car_addr(const tesla_car_addr_t *addr)
     return err;
 }
 
-void tesla_storage_erase_all(void)
-{
-    nvs_handle_t h;
-
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_all(h);
-        nvs_commit(h);
-        nvs_close(h);
-    }
-}
+// Remove all Tesla state (factory reset / re-pair flow) is intentionally not
+// wired yet: it will be exposed behind a Phase 4 console command / app
+// `pair`-reset write rather than shipping dead today.
 
 // ---- Onboard advertisement-name log ----
 //
@@ -320,17 +313,6 @@ void tesla_advert_log_dump(void)
                  (int)en->rssi, (unsigned)en->count, (unsigned)en->time_s);
     }
     free(log);
-}
-
-void tesla_advert_log_clear(void)
-{
-    nvs_handle_t h;
-
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_key(h, KEY_BEACON);
-        nvs_commit(h);
-        nvs_close(h);
-    }
 }
 
 uint32_t tesla_storage_boot_count(void)

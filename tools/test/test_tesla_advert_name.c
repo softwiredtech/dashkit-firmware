@@ -2,7 +2,7 @@
 // (main/tesla/tesla_advert_name.c).
 //
 // The matcher itself is pure C and needs no libraries, but the test also
-// derives a VIN -> advertisement-name vector (legacy: "S"+first-8-hex of
+// derives a VIN -> advertisement-name vector (legacy: "S"+first-16-hex of
 // SHA1(VIN)+"C"; modern: "Tesla "+last-6-of-VIN), so it links the same host
 // mbedTLS 3.6.2 build the Phase 0 crypto test uses — run via
 // run_tesla_advert_name_test.sh, which reused that prefix.
@@ -35,8 +35,8 @@ static int g_fail;
 // Matches the real Tesla broadcast: "S" + first 16 hex of SHA1(VIN) + role
 // letter (teslabtapi / vehicle-command), e.g. VIN 5YJ3E1EB3MF074051 ->
 // Sf9cd80ddffdd5492C. (The short 8-hex form is *not* produced by real cars; it
-// was only used by the original fake-beacon tests, and the matcher accepts it
-// too for backward compatibility.)
+// was only used by the original fake-beacon tests, and the matcher no longer
+// accepts it — real cars use the 18-char form.)
 static void legacy_name(const char *vin, char fmt_char, char out[19])
 {
     unsigned char digest[20];
@@ -73,16 +73,18 @@ static void check_vin_char(void)
 
 static void check_legacy(void)
 {
-    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234C", 10) == TESLA_NAME_LEGACY,
-          "legacy: S + 8 hex + C");
-    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234R", 10) == TESLA_NAME_LEGACY,
-          "legacy: trailing R accepted");
-    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234D", 10) == TESLA_NAME_LEGACY,
-          "legacy: trailing D accepted");
-    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234P", 10) == TESLA_NAME_LEGACY,
-          "legacy: trailing P accepted");
-    CHECK(tesla_advert_name_format((const uint8_t *)"SAbCdEf01C", 10) == TESLA_NAME_LEGACY,
-          "legacy: mixed-case hex accepted");
+    /* The 8-hex (10-char) dev-beacon form is NOT a real Tesla broadcast and is
+     * no longer accepted — only the 18-char (16-hex) legacy name counts. */
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234C", 10) == TESLA_NAME_NONE,
+          "legacy: 8-hex 10-char form rejected (dev beacon, not a real car)");
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234R", 10) == TESLA_NAME_NONE,
+          "legacy: 8-hex 10-char rejected (trailing R)");
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234D", 10) == TESLA_NAME_NONE,
+          "legacy: 8-hex 10-char rejected (trailing D)");
+    CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234P", 10) == TESLA_NAME_NONE,
+          "legacy: 8-hex 10-char rejected (trailing P)");
+    CHECK(tesla_advert_name_format((const uint8_t *)"SAbCdEf01C", 10) == TESLA_NAME_NONE,
+          "legacy: 8-hex 10-char rejected (mixed-case hex)");
     CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234X", 10) == TESLA_NAME_NONE,
           "legacy: unknown trailing letter rejected");
     CHECK(tesla_advert_name_format((const uint8_t *)"Sabcd1234", 9) == TESLA_NAME_NONE,

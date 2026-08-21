@@ -12,6 +12,7 @@
 #include "tesla_ble_adapter.h"
 #include "tesla_advert_name.h"
 #include "tesla_ble_storage.h"
+#include "tesla_pairing.h"
 
 #include "esp_log.h"
 #include "esp_random.h"
@@ -95,9 +96,8 @@ static int discovery_event_handler(struct ble_gap_event *event, void *arg)
         ESP_LOGD(TAG, "  MAC=%02X:%02X:%02X:%02X:%02X:%02X",
                  mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
     } else {
-        // Diagnostic (temporary INFO): surface every nearby advertisement name
-        // so a live monitor shows what the observer actually sees. Intended to
-        // prove/disprove the scan path; demote back to DEBUG once confirmed.
+        // Non-Tesla advertisement: log at INFO so a no-monitor in-car run can be
+        // read back from the persistent advert log at the next boot.
         ESP_LOGI(TAG, "advert seen: name=\"%.*s\" (format=-) rssi=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X",
                  (int)fields.name_len, (const char *)fields.name, (int)disc->rssi,
                  mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
@@ -108,6 +108,19 @@ static int discovery_event_handler(struct ble_gap_event *event, void *arg)
     tesla_advert_log_add(fields.name, fields.name_len,
                          (uint8_t)(fmt != TESLA_NAME_NONE), (uint8_t)fmt,
                          mac, disc->rssi);
+
+    // Phase 3 auto-provision (unattended enrollment): if this is OUR car (by
+    // VIN-derived name), feed the pairing task the address we just discovered
+    // plus the target VIN, so enrollment arms itself with no console/app input.
+    // No-op unless the name matches the configured target and no key is
+    // enrolled yet. tesla_car_addr_t has the same {type, val[6]} layout as
+    // ble_addr_t, so a direct copy is safe.
+    if (fmt != TESLA_NAME_NONE) {
+        tesla_car_addr_t addr;
+        memcpy(&addr, &disc->addr, sizeof(addr));
+        tesla_pairing_observe_vehicle((const char *)fields.name,
+                                      fields.name_len, &addr);
+    }
     return 0;
 }
 
@@ -298,10 +311,14 @@ static int mtu_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
     return 0;
 }
 
-// Subscribe to the indicate characteristic (write 0x0002 to its CCCD).
+// Subscribe to the vehicle status characteristic (write to its CCCD). Value
+// 0x0003 enables BOTH notifications and indications: the reference uses
+// indications, but the working ESPHome/BLE path pushes replies as
+// notifications, so enabling both covers either delivery for the session/status
+// replies without ambiguity.
 static void subscribe_indicate(uint16_t conn_handle)
 {
-    const uint8_t cccd[2] = { 0x02, 0x00 };   // enable indications
+    const uint8_t cccd[2] = { 0x03, 0x00 };   // enable notifications + indications
     s_central.state = ST_SUBSCRIBING;
     int rc = ble_gattc_write_flat(conn_handle, s_central.rx_handle + 1,
                                   cccd, sizeof(cccd), NULL, NULL);
@@ -447,7 +464,12 @@ static esp_err_t central_connect_start(const void *addr)
     params.itvl_min = 96;        // ~120 ms connection interval
     params.itvl_max = 160;       // ~200 ms
     params.latency = 0;
-    params.supervision_timeout = 400;  // 4 s
+    // 20 s supervision timeout (was 4 s). A car that is awake but silent while
+    // it awaits the owner's enrollment card-tap used to drop the link via 0x208
+    // (supervision timeout) well within the 60 s tap window; the pairing task
+    // also sends a periodic GATT-read keepalive (tesla_ble_keepalive) so the
+    // timeout never actually fires on a live-but-quiet link.
+    params.supervision_timeout = 2000;
     params.min_ce_len = 0;
     params.max_ce_len = 0;
 
@@ -539,6 +561,38 @@ esp_err_t tesla_ble_send(const uint8_t *data, size_t len)
         off += n;
     }
     return ESP_OK;
+}
+
+// Discard a keepalive read result; only its arrival matters (it resets the
+// connection's supervision timeout, proving the link is still alive).
+static int keepalive_read_cb(uint16_t conn_handle,
+                             const struct ble_gatt_error *error,
+                             struct ble_gatt_attr *attr, void *arg)
+{
+    (void)conn_handle;
+    (void)attr;
+    (void)arg;
+    if (error->status == 0 || error->att_handle == 0) {
+        /* a live link answered (a value or an ATT error both count) */
+    }
+    return 0;
+}
+
+// Keep the central link alive during a long, quiet wait (e.g. the owner's
+// NFC-card tap window) by issuing a GATT read of the vehicle status
+// characteristic. The read's ATT request/response is link-layer traffic, so it
+// resets the supervision timeout without injecting any data into the vehicle;
+// the result (a value or an ATT error) is irrelevant and never feeds the rx
+// (frame) path. Call periodically from a task. No-op when not connected.
+esp_err_t tesla_ble_keepalive(void)
+{
+    if (s_central.state != ST_READY || s_central.conn_handle == 0 ||
+        s_central.rx_handle == 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    int rc = ble_gattc_read(s_central.conn_handle, s_central.rx_handle,
+                            keepalive_read_cb, NULL);
+    return rc == 0 ? ESP_OK : ESP_FAIL;
 }
 
 void tesla_ble_disconnect(void)

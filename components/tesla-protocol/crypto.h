@@ -103,3 +103,20 @@ int tesla_gcm_decrypt(const uint8_t k[TESLA_SHARED_KEY_LEN],
                       const uint8_t nonce[TESLA_NONCE_LEN],
                       const uint8_t tag[TESLA_GCM_TAG_LEN],
                       uint8_t *plaintext);
+
+// ============================================================================
+// Phase 3: key generation for present-key enrollment.
+//
+// Enrollment sends a VCSEC.ToVCSECMessage whose SignedMessage carries the new
+// public key and SIGNATURE_TYPE_PRESENT_KEY (see protobuf_build.c). The message
+// is NOT cryptographically signed by the firmware — the car authorizes the
+// enrollment physically (owner taps an NFC card + confirms on the touchscreen),
+// exactly as the Apache-2.0 vehicle-command reference's SendAddKeyRequestWithRole
+// does (it marshals the envelope and sends it with no appended signature; the
+// reference's Schnorr/P256 code is for Fleet-API JWT signing, not BLE).
+// ============================================================================
+
+// Generate a fresh NIST-P256 keypair into `key` (big-endian priv scalar + 65
+// bytes uncompressed pub). `f_rng`/`p_rng` must be a cryptographically strong
+// RNG (hardware RNG on-device). Returns 0 on success.
+int tesla_keypair_generate(tesla_keypair_t *key, tesla_rng_fn f_rng, void *p_rng);

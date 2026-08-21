@@ -60,11 +60,27 @@ int tesla_pb_decode_routable(const uint8_t *data, size_t len,
 int tesla_pb_encode_vcsec_status(uint8_t *out, size_t out_cap, size_t *out_len);
 
 // Encode VCSEC.UnsignedMessage{WhitelistOperation{
-//   addKeyToWhitelistAndAddPermissions{key, role, secondsToBeActive}}}.
-// Used by the Phase 3 pairing flow.
+//   addKeyToWhitelistAndAddPermissions{key, role, secondsToBeActive=0},
+//   metadataForKey{keyFormFactor=form_factor}}}. Used by the Phase 3 pairing
+// flow — the inner message carried by the present-key SignedMessage.
+// secondsToBeActive is fixed at 0 (a permanent key, matching the reference
+// addKeyPayload, which leaves it unset).
 int tesla_pb_encode_vcsec_whitelist(const uint8_t pubkey[TESLA_PUBKEY_LEN],
-                                    uint32_t role, uint32_t seconds_to_be_active,
+                                    uint32_t role, uint32_t form_factor,
                                     uint8_t *out, size_t out_cap, size_t *out_len);
+
+// Build the complete Phase 3 present-key enrollment message for
+// `addKeyToWhitelistAndAddPermissions`: a marshalled VCSEC.ToVCSECMessage whose
+// SignedMessage carries the WhitelistOperation and SIGNATURE_TYPE_PRESENT_KEY.
+// The message is sent as-is (no appended signature) — the car authorizes the
+// enrollment physically via the owner's NFC-card tap + touchscreen confirm,
+// exactly as the reference SendAddKeyRequestWithRole does. `key` is the *new*
+// keypair being enrolled; its public key is embedded in the WhitelistOperation.
+// Returns 0 on success with *out_len set; this is the byte string sent
+// (length-framed) over BLE 0212.
+int tesla_pb_build_enrollment(const tesla_keypair_t *key, uint32_t role,
+                              uint32_t form_factor,
+                              uint8_t *out, size_t out_cap, size_t *out_len);
 
 // Decode a VCSEC.FromVCSECMessage application payload.
 int tesla_pb_decode_vcsec_from(const uint8_t *data, size_t len,

@@ -11,6 +11,7 @@ if(CONFIG_DASHKIT_TESLA_BLE)
         "tesla/tesla_ble_adapter.c"
         "tesla/tesla_ble_storage.c"
         "tesla/tesla_ble_client.c"
+        "tesla/tesla_pairing.c"
     )
 endif()
 

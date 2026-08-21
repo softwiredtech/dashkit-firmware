@@ -4,8 +4,10 @@
  * A Tesla advertises under one of two documented formats (vehicle-command
  * protocol.md / ADR 0001):
  *
- *   Legacy (pre ~mid-2023): "S" + first 8 hex chars of SHA1(VIN) + "C"
- *     (the trailing letter has been observed as C / R / D / P).
+ *   Legacy (pre ~mid-2023): "S" + first 8 bytes (16 hex chars) of SHA1(VIN) + role
+ *     (the trailing letter has been observed as C / R / D / P). On-air real car
+ *     (5YJ3E1EB3MF074051 -> Sf9cd80ddffdd5492C). NOTE: an 8-hex (10-char) form is
+ *     NOT a real Tesla broadcast — it was only the original dev/test fake beacon.
  *   Modern (since ~mid-2023): "Tesla " + last 6 characters of the VIN.
  *
  * This module only knows the SHAPE of those names (and, for the modern form,
@@ -30,7 +32,7 @@ extern "C" {
 
 enum tesla_name_format {
     TESLA_NAME_NONE = 0,   /* not a Tesla advertisement name                 */
-    TESLA_NAME_LEGACY,     /* S + 8 hex + C/R/D/P                            */
+    TESLA_NAME_LEGACY,     /* S + 16 hex + C/R/D/P (real car); 8-hex is dev beacon only */
     TESLA_NAME_MODERN,     /* "Tesla " + 4..6 VIN-alphabet characters        */
 };
 

@@ -5,6 +5,15 @@ CONFIG_IDF_TARGET="esp32s3"
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4
+# GATT-client procedure pool. NimBLE's default (4) is tuned for a single quiet
+# central; our Tesla client runs a connect -> discovery -> subscribe ->
+# handshake -> write/read/indicate sequence with fast reconnect cycles, and
+# chaining the next GATT procedure from a completion callback can transiently
+# exceed 4 slots when prior cycles' "unresponsive" procs (e.g. a sleeping car)
+# are still lingering on their timeout timer (ble_gattc_proc_alloc -> ENOMEM,
+# seen as "chr discovery start failed: 6"). Size 8 gives retry-storm headroom
+# for the one car link; ESP-IDF's own central examples size this 35-70.
+CONFIG_BT_NIMBLE_GATT_MAX_PROCS=8
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
 CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
 CONFIG_BT_NIMBLE_ROLE_OBSERVER=y

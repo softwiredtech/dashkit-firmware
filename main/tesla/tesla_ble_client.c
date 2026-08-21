@@ -24,10 +24,14 @@ static const char *TAG = "tesla_client";
 // Poll cadence + connection budget (plan §2/§6).
 #define POLL_INTERVAL_S      10
 #define POLLS_PER_CONN       5
-#define RECONNECT_DELAY_S    30
 #define RESPONSE_TIMEOUT_MS  3000
 #define CONNECT_TIMEOUT_MS   20000
 #define NO_KEY_DELAY_S       10
+// Reconnect backoff: reset to BASE_S after a successful status cycle; double
+// up to MAX_S while the car is asleep/unreachable (a fixed short delay just
+// hammers a sleeping car and keeps its VCSEC awake).
+#define RECONNECT_BASE_S     10
+#define RECONNECT_MAX_S      300
 
 // Max BLE frame (framing + payload). 320 B is fine for Phase 2/3 VCSEC
 // (GET_STATUS responses are small), but Phase 4 Infotainment responses
@@ -65,7 +69,11 @@ static void client_rx_cb(const uint8_t *data, size_t len, void *arg)
     f.len = (uint16_t)len;
     memcpy(f.data, data, len);
     if (xQueueSend(s_rxq, &f, 0) != pdTRUE) {
-        ESP_LOGW(TAG, "rx queue full; dropping frame");
+        // The queue backs up only with stale/extra frames the car pushed while
+        // we were idle between polls (each request re-reads its own response by
+        // fresh routing). Dropping them is benign, so keep it at DEBUG — a WARN
+        // here was pure noise on a healthy car.
+        ESP_LOGD(TAG, "rx queue full; dropping stale frame");
     }
 }
 
@@ -89,7 +97,13 @@ static esp_err_t recv_for_route(uint8_t *buf, size_t cap, size_t *out_len,
             return ESP_ERR_TIMEOUT;
         }
         UniversalMessage_RoutableMessage m;
+        memset(&m, 0, sizeof(m));   // pb_decode only writes wire-present fields;
+                                    // zero first so absent optional fields are not
+                                    // read as garbage (a non-matching / fault frame
+                                    // would otherwise be silently dropped as "not
+                                    // our response").
         if (tesla_pb_decode_routable(f.data, f.len, &m) != 0) {
+            ESP_LOGD(TAG, "rx frame unparseable (len=%u); ignoring", (unsigned)f.len);
             continue;   // unparseable frame: drop, keep waiting
         }
         if (m.has_to_destination &&
@@ -107,7 +121,18 @@ static esp_err_t recv_for_route(uint8_t *buf, size_t cap, size_t *out_len,
             }
             return ESP_OK;
         }
-        // Not our response; drop and keep waiting.
+        // Not our framed response. Surface a protocol-layer fault if the car
+        // answered with a rejection (so a real reply is never mistaken for a
+        // timeout), then drop and keep waiting.
+        if (m.has_signedMessageStatus &&
+            m.signedMessageStatus.signed_message_fault != 0) {
+            ESP_LOGW(TAG, "car replied w/ signedMessageStatus fault=%u (len=%u), not for our route",
+                     (unsigned)m.signedMessageStatus.signed_message_fault,
+                     (unsigned)f.len);
+        } else {
+            ESP_LOGD(TAG, "rx frame not for our route (len=%u); ignoring",
+                     (unsigned)f.len);
+        }
     }
 }
 
@@ -156,8 +181,14 @@ static const char *presence_name(int v)
     }
 }
 
-static void refresh_status(tesla_session_t *sess, const char *vin,
-                           int *last_presence, int *last_lock, int *last_sleep)
+// Build + send GET_STATUS and collect responses. Returns a terminal result so
+// the poll loop can stop early instead of firing polls at a dead link:
+//   ESP_OK            - a vehicleStatus (or terminal DONE) was obtained
+//   ESP_FAIL          - send/building failed: the link is gone, reconnect now
+//   ESP_ERR_TIMEOUT   - no acceptable response within the attempts: the car is
+//                       asleep/unresponsive, reconnect (with backoff)
+static esp_err_t refresh_status(tesla_session_t *sess, const char *vin,
+                                int *last_presence, int *last_lock, int *last_sleep)
 {
     uint8_t payload[TESLA_PB_PAYLOAD_MAX], req[400];
     uint8_t request_hash[33], routing[16], uuid[16];
@@ -166,7 +197,7 @@ static void refresh_status(tesla_session_t *sess, const char *vin,
     if (tesla_pb_encode_vcsec_status(payload, sizeof(payload), &payload_len) != 0 ||
         payload_len == 0) {
         ESP_LOGE(TAG, "failed to build GET_STATUS");
-        return;
+        return ESP_FAIL;
     }
     esp_fill_random(routing, sizeof(routing));
     esp_fill_random(uuid, sizeof(uuid));
@@ -178,11 +209,11 @@ static void refresh_status(tesla_session_t *sess, const char *vin,
                                     request_hash, &req_hash_len,
                                     hw_rng, NULL) != 0) {
         ESP_LOGE(TAG, "failed to sign GET_STATUS");
-        return;
+        return ESP_FAIL;
     }
     if (tesla_ble_send(req, req_len) != ESP_OK) {
-        ESP_LOGW(TAG, "GET_STATUS send failed");
-        return;
+        ESP_LOGW(TAG, "GET_STATUS send failed (link lost)");
+        return ESP_FAIL;
     }
 
     // VCSEC may emit up to three responses to one request (e.g. a WAIT/busy
@@ -248,7 +279,7 @@ static void refresh_status(tesla_session_t *sess, const char *vin,
         case TESLA_VCSEC_DONE:
             // Terminal success without a status payload (GET_STATUS answered
             // with an empty OK): nothing to report.
-            return;
+            return ESP_OK;
         case TESLA_VCSEC_ERROR:
             errored = true;
             ESP_LOGW(TAG, "VCSEC nominalError for GET_STATUS");
@@ -258,8 +289,23 @@ static void refresh_status(tesla_session_t *sess, const char *vin,
             break;
         }
     }
-    if (!got_status && !errored) {
-        ESP_LOGW(TAG, "no terminal status after 3 responses");
+    if (got_status) {
+        return ESP_OK;
+    }
+    if (errored) {
+        ESP_LOGW(TAG, "GET_STATUS errored; reconnecting");
+        return ESP_ERR_TIMEOUT;
+    }
+    ESP_LOGW(TAG, "no terminal status after %d responses", 3);
+    return ESP_ERR_TIMEOUT;
+}
+
+// Discard any stale frames left from the previous cycle so a late reply never
+// lingers to be misrouted or to overflow the queue at the next poll.
+static void drain_rxq(void)
+{
+    rx_frame_t f;
+    while (s_rxq != NULL && xQueueReceive(s_rxq, &f, 0) == pdTRUE) {
     }
 }
 
@@ -270,6 +316,7 @@ static void client_task(void *arg)
     tesla_car_addr_t addr;
     char vin[32];
     bool configured = false;
+    uint32_t backoff_s = RECONNECT_BASE_S;
 
     while (true) {
         if (!load_config(&key, &addr, vin)) {
@@ -281,20 +328,29 @@ static void client_task(void *arg)
             continue;
         }
         configured = true;
+        bool ok = false;
+
+        // Re-assert our RX callback each cycle: the pairing task owns the RX
+        // path during enrollment and hands it back once a key exists. Drain
+        // any stale frames so a late reply can't linger/misroute at the next
+        // poll.
+        tesla_ble_set_rx_cb(client_rx_cb, NULL);
+        drain_rxq();
 
         ESP_LOGI(TAG, "connecting to car MAC %02X:%02X:%02X:%02X:%02X:%02X",
                  addr.val[5], addr.val[4], addr.val[3], addr.val[2],
                  addr.val[1], addr.val[0]);
         if (tesla_ble_connect(&addr, CONNECT_TIMEOUT_MS) != ESP_OK) {
-            ESP_LOGW(TAG, "connect failed; retrying in %d s", RECONNECT_DELAY_S);
+            ESP_LOGW(TAG, "connect failed");
             // Tear down any half-opened/ghost link (review S3) so the next
             // cycle starts from ST_IDLE instead of wedging the state machine.
             tesla_ble_disconnect();
-            vTaskDelay(pdMS_TO_TICKS(RECONNECT_DELAY_S * 1000));
-            continue;
+            goto reconnect;
         }
 
-        // VCSEC handshake.
+        // VCSEC handshake (fresh each cycle — the boot-relative clock cannot
+        // carry a session's vehicle-clock offset across a reboot, so the client
+        // always re-syncs rather than caching a stale epoch/offset).
         tesla_session_t sess;
         tesla_session_init(&sess, TESLA_DOMAIN_VEHICLE_SECURITY, now_ms);
         {
@@ -306,47 +362,72 @@ static void client_task(void *arg)
                                               key.pub, routing, challenge,
                                               req, sizeof(req), &req_len) != 0) {
                 ESP_LOGE(TAG, "failed to build handshake request");
-                goto cycle_done;
+                goto reconnect;
             }
             if (tesla_ble_send(req, req_len) != ESP_OK) {
                 ESP_LOGW(TAG, "handshake send failed");
-                goto cycle_done;
+                goto reconnect;
             }
             if (recv_for_route(resp, sizeof(resp), &resp_len,
                                RESPONSE_TIMEOUT_MS, routing) != ESP_OK) {
-                ESP_LOGW(TAG, "no handshake response");
-                goto cycle_done;
+                ESP_LOGW(TAG, "no handshake response (car asleep?)");
+                goto reconnect;
             }
             if (tesla_session_handshake(&sess, &key, (const uint8_t *)vin, strlen(vin),
                                         challenge, resp, resp_len,
                                         hw_rng, NULL) != 0) {
                 ESP_LOGW(TAG, "handshake rejected (key not enrolled?)");
-                goto cycle_done;
+                goto reconnect;
             }
             if (!sess.whitelisted) {
                 // HMAC was valid (we have K), but the car reports this key is
                 // NOT on the whitelist — un-enrolled, so poll will fail.
                 ESP_LOGW(TAG, "handshake OK, but key NOT on whitelist "
                               "(enroll via Phase 3 pairing)");
-                goto cycle_done;
+                goto reconnect;
             }
-            ESP_LOGI(TAG, "VCSEC handshake complete (epoch=counter=%u)",
+            ESP_LOGI(TAG, "VCSEC handshake complete (counter=%u)",
                      (unsigned)sess.counter);
         }
 
         // GET_STATUS poll while connected; log presence/lock/sleep deltas.
+        // Abort the poll the moment a refresh fails (link dropped / car
+        // unresponsive) instead of firing all POLLS_PER_CONN polls at a dead
+        // link.
         {
             int last_presence = -1, last_lock = -1, last_sleep = -1;
             for (int i = 0; i < POLLS_PER_CONN; i++) {
-                refresh_status(&sess, vin, &last_presence, &last_lock, &last_sleep);
+                // Clear stale/extra frames the car pushed during the idle wait
+                // (VCSEC may emit more indications than we consume) so the
+                // queue can't back up the next response — each request re-reads
+                // its own response by fresh routing, so nothing legitimate is
+                // discarded here.
+                drain_rxq();
+                if (refresh_status(&sess, vin,
+                                   &last_presence, &last_lock, &last_sleep) != ESP_OK) {
+                    break;
+                }
+                ok = true;
                 vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_S * 1000));
             }
         }
 
-    cycle_done:
-        // Idle-disconnect (load-bearing, plan §6): free the car link.
+    reconnect:
+        // Idle-disconnect (load-bearing, plan §6): free the car link, then
+        // back off so a sleeping/unreachable car isn't hammered (reset the
+        // backoff after a healthy cycle).
         tesla_ble_disconnect();
-        vTaskDelay(pdMS_TO_TICKS(RECONNECT_DELAY_S * 1000));
+        if (ok) {
+            backoff_s = RECONNECT_BASE_S;
+        } else {
+            backoff_s *= 2;
+            if (backoff_s > RECONNECT_MAX_S) {
+                backoff_s = RECONNECT_MAX_S;
+            }
+        }
+        ESP_LOGI(TAG, "cycle %s; reconnecting in %lu s",
+                 ok ? "ok" : "failed", (unsigned long)backoff_s);
+        vTaskDelay(pdMS_TO_TICKS(backoff_s * 1000));
     }
 }
 

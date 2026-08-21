@@ -48,6 +48,12 @@ esp_err_t tesla_ble_connect(const void *addr, uint32_t timeout_ms);
 // chunk is written.
 esp_err_t tesla_ble_send(const uint8_t *data, size_t len);
 
+// Keep the central link alive during a long, quiet wait (the owner's NFC-card
+// tap window): issues a GATT read of the vehicle status characteristic, whose
+// request/response traffic resets the link supervision timeout without
+// injecting data. Fire periodically from a task; no-op when not connected.
+esp_err_t tesla_ble_keepalive(void);
+
 // Terminate the central link (idle-disconnect / error). Safe to call when not
 // connected.
 void tesla_ble_disconnect(void);

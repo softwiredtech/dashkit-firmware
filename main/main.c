@@ -11,6 +11,7 @@
 #include "ble_ota.h"
 #include "tesla_ble_adapter.h"
 #include "tesla_ble_client.h"
+#include "tesla_pairing.h"
 
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -227,12 +228,14 @@ void app_main(void)
 #if defined(CONFIG_DASHKIT_TESLA_BLE)
     // Boot canary for the Tesla link (plan §5): role state must be visible and
     // a missing key/link must not be silent. Phase 3 enrollment populates the
-    // tesla NVS key/vin/mac; until then the client task logs "no enrolled key".
-    ESP_LOGI(TAG, "Tesla BLE: enabled (observer=%d, central=%d). Connect + "
-                  "VCSEC handshake + GET_STATUS in Phase 2; key/link populated "
-                  "by Phase 3 pairing.",
+    // tesla NVS key/vin/mac; until then the pairing task waits for provisioning
+    // and the client task logs "no enrolled key".
+    ESP_LOGI(TAG, "Tesla BLE: enabled (observer=%d, central=%d). Observer scan "
+                  "+ client poll active; pairing (enrollment) runs when a "
+                  "key/link is not yet present.",
              CONFIG_BT_NIMBLE_ROLE_OBSERVER, CONFIG_BT_NIMBLE_ROLE_CENTRAL);
     ESP_ERROR_CHECK(tesla_ble_adapter_observer_init());
+    ESP_ERROR_CHECK(tesla_pairing_init());
     ESP_ERROR_CHECK(tesla_ble_client_init());
 #endif
 

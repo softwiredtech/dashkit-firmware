@@ -7,10 +7,12 @@
  *   - the 17-char VIN (personalization for every command)
  *   - the car's BLE address (so we connect directly instead of re-scanning)
  *
- * Phase 3 (pairing) fills these via tesla_storage_save_*; Phase 2 code reads
- * them (tesla_storage_load_*) so that once a key is enrolled the handshake +
- * GET_STATUS poll can run. Session caching (epoch/counter/clock offset) and
- * key generation/re-enrollment land in Phase 3.
+ * Phase 3 (pairing) writes these from its enrollment flow (tesla_pairing.c);
+ * the Phase 2/3 client reads them (tesla_storage_load_*) so that once a key is
+ * enrolled the handshake + GET_STATUS poll can run. Key generation/re-enrollment
+ * land here too. (Session caching is deferred — the boot-relative clock cannot
+ * carry the vehicle-clock offset across a reboot, so the client re-handshakes
+ * each cycle; see the plan §Phase 3.)
  *
  * Matches the plan: "plaintext NVS private key initially (matches the ESPHome
  * reference)" — no key material is ever logged; flash-encryption / SE hardening
@@ -55,9 +57,6 @@ esp_err_t tesla_storage_save_vin(const char *vin);
 esp_err_t tesla_storage_load_car_addr(tesla_car_addr_t *addr);
 esp_err_t tesla_storage_save_car_addr(const tesla_car_addr_t *addr);
 
-// Remove all Tesla state (used by a factory reset / re-pair flow in Phase 3+).
-void tesla_storage_erase_all(void);
-
 // ---- Onboard advertisement-name log (in-car diagnostic) ----
 //
 // Records EVERY distinct BLE local name the observer sees (not just Tesla
@@ -81,7 +80,6 @@ typedef struct {
 void tesla_advert_log_add(const uint8_t *name, size_t name_len, uint8_t matched,
                           uint8_t format, const uint8_t mac[6], int8_t rssi);
 void tesla_advert_log_dump(void);
-void tesla_advert_log_clear(void);
 
 // Persist and return a monotonically increasing boot counter. Confirms the
 // board actually powered up during an unattended run (e.g. in the car): it

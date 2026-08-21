@@ -199,3 +199,42 @@ int tesla_gcm_decrypt(const uint8_t k[TESLA_SHARED_KEY_LEN],
     mbedtls_gcm_free(&gcm);
     return rc;
 }
+
+// ============================================================================
+// Phase 3: NIST-P256 keypair generation for present-key enrollment.
+// ============================================================================
+
+int tesla_keypair_generate(tesla_keypair_t *key, tesla_rng_fn f_rng, void *p_rng)
+{
+    int rc;
+    mbedtls_ecp_group grp;
+    mbedtls_mpi d;
+    mbedtls_ecp_point Q;
+    size_t olen = 0;
+
+    if (key == NULL || f_rng == NULL) {
+        return -1;
+    }
+    mbedtls_ecp_group_init(&grp);
+    mbedtls_mpi_init(&d);
+    mbedtls_ecp_point_init(&Q);
+
+    rc = mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
+    if (rc == 0) {
+        rc = mbedtls_ecp_gen_privkey(&grp, &d, f_rng, p_rng);
+    }
+    if (rc == 0) {
+        rc = mbedtls_mpi_write_binary(&d, key->priv, TESLA_PRIVKEY_LEN);
+    }
+    if (rc == 0) {
+        rc = mbedtls_ecp_mul(&grp, &Q, &d, &grp.G, f_rng, p_rng);
+    }
+    if (rc == 0) {
+        rc = mbedtls_ecp_point_write_binary(&grp, &Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
+                                            &olen, key->pub, TESLA_PUBKEY_LEN);
+    }
+    mbedtls_ecp_group_free(&grp);
+    mbedtls_mpi_free(&d);
+    mbedtls_ecp_point_free(&Q);
+    return rc;
+}

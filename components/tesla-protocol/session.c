@@ -20,10 +20,10 @@ int tesla_metadata_add(tesla_metadata_t *m, uint8_t tag,
                        const uint8_t *value, size_t value_len)
 {
     if (m->finalized) {
-        return -1;   // can't grow after the terminator
+        return -1;
     }
     if (m->last_tag >= (int)tag) {
-        return -1;   // tags must be strictly ascending
+        return -1;
     }
     if (value_len > 255) {
         return -1;   // TLV length field is a single byte
@@ -235,7 +235,6 @@ uint32_t tesla_session_now_vehicle_s(const tesla_session_t *s)
     if (!s->valid || s->now_ms == NULL) {
         return 0;
     }
-    // vehicle_now_ms = clock_time*1000 + (local_now - sync_local_ms)
     int64_t now_ms = (int64_t)s->now_ms();
     int64_t elapsed_ms = now_ms - (int64_t)s->sync_local_ms;
     int64_t vehicle_ms = (int64_t)s->clock_time * 1000 + elapsed_ms;
