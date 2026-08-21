@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# Build mbedTLS 3.6.2 into a local prefix and run the Tesla crypto
-# known-answer unit test (tools/test/test_tesla_crypto.c) against it.
+# Build (or reuse) a host mbedTLS 3.6.2 prefix and run the Tesla Phase 2
+# protocol round-trip test (tools/test/test_tesla_session.c) against the
+# commited nanopb bindings + crypto/session/protobuf_build layers.
 #
-# Why build mbedTLS from source? Phase 0's whole point is validating the
-# mbedTLS 3.x API port (ESP-IDF 5.4.1 vendors 3.6.2). Ubuntu 24.04's
-# libmbedtls-dev is still 2.28.x, so we pin the exact 3.6.2 release and build
-# it locally. Works on any Linux host (CI ubuntu-latest) and in WSL.
+# Reuses the mbedTLS prefix built by run_tesla_crypto_test.sh so running all
+# three test scripts never rebuilds mbedTLS twice.
 #
 # Requires: gcc, make, curl.
 set -euo pipefail
 
 MBEDTLS_VERSION=3.6.2
 MBEDTLS_URL="https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v${MBEDTLS_VERSION}.tar.gz"
-# SHA-256 of the v3.6.2 source tarball (verify on every run so a partial or
-# tampered download is never trusted).
+# SHA-256 of the v3.6.2 source tarball (must match the other run_*.sh scripts).
 MBEDTLS_SHA256="f4a876b1f6921ad0aefb445f974ef62414d33928640b2c45555c5e64a196a1a8"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +20,7 @@ WORK="${REPO_ROOT}/build/tesla-host-test"
 SRC="${WORK}/mbedtls-${MBEDTLS_VERSION}"
 PREFIX="${WORK}/mbedtls-prefix"
 TARBALL="${WORK}/mbedtls-${MBEDTLS_VERSION}.tar.gz"
+PROTOCOMP="${REPO_ROOT}/components/tesla-protocol"
 
 mkdir -p "${WORK}"
 
@@ -51,13 +50,12 @@ if [ ! -f "${PREFIX}/lib/libmbedcrypto.a" ]; then
 fi
 
 echo "==> Compiling test"
-PROTOCOMP="${REPO_ROOT}/components/tesla-protocol"
-cc -std=c99 -Wall -Wextra \
+cc -std=c99 -Wall -Wextra -Wno-unused-function \
    -I "${PROTOCOMP}" \
    -I "${PROTOCOMP}/generated" \
    -I "${PROTOCOMP}/nanopb" \
    -I "${PREFIX}/include" \
-   "${SCRIPT_DIR}/test_tesla_crypto.c" \
+   "${SCRIPT_DIR}/test_tesla_session.c" \
    "${PROTOCOMP}/crypto.c" \
    "${PROTOCOMP}/session.c" \
    "${PROTOCOMP}/protobuf_build.c" \
@@ -66,7 +64,7 @@ cc -std=c99 -Wall -Wextra \
    "${PROTOCOMP}/nanopb/pb_decode.c" \
    "${PROTOCOMP}/nanopb/pb_encode.c" \
    -L "${PREFIX}/lib" -lmbedcrypto -lmbedtls -lmbedx509 \
-   -o "${WORK}/test_tesla_crypto"
+   -o "${WORK}/test_tesla_session"
 
 echo "==> Running test"
-"${WORK}/test_tesla_crypto"
+"${WORK}/test_tesla_session"

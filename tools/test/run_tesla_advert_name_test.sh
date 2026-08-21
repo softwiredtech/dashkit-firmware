@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Build mbedTLS 3.6.2 into a local prefix and run the Tesla crypto
-# known-answer unit test (tools/test/test_tesla_crypto.c) against it.
+# Build (or reuse) a host mbedTLS 3.6.2 prefix and run the Tesla
+# advertisement-name matcher unit test (tools/test/test_tesla_advert_name.c)
+# against main/tesla/tesla_advert_name.c.
 #
-# Why build mbedTLS from source? Phase 0's whole point is validating the
-# mbedTLS 3.x API port (ESP-IDF 5.4.1 vendors 3.6.2). Ubuntu 24.04's
-# libmbedtls-dev is still 2.28.x, so we pin the exact 3.6.2 release and build
-# it locally. Works on any Linux host (CI ubuntu-latest) and in WSL.
+# Reuses the exact mbedTLS prefix that run_tesla_crypto_test.sh builds, so
+# running both never rebuilds mbedTLS twice. The matcher is pure C, but the
+# test derives a legacy ad name from a VIN using mbedTLS SHA-1 (the same hash
+# family the firmware uses to check VIN identity from Phase 2 on).
 #
 # Requires: gcc, make, curl.
+# Optional: a VIN as argv to print the exact names your fake beacon must
+# broadcast (also validated against the matcher in-test).
 set -euo pipefail
 
 MBEDTLS_VERSION=3.6.2
 MBEDTLS_URL="https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v${MBEDTLS_VERSION}.tar.gz"
-# SHA-256 of the v3.6.2 source tarball (verify on every run so a partial or
-# tampered download is never trusted).
+# SHA-256 of the v3.6.2 source tarball (must match run_tesla_crypto_test.sh).
 MBEDTLS_SHA256="f4a876b1f6921ad0aefb445f974ef62414d33928640b2c45555c5e64a196a1a8"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,28 +47,19 @@ if [ ! -f "${PREFIX}/lib/libmbedcrypto.a" ]; then
     echo "==> Building mbedTLS ${MBEDTLS_VERSION}"
     make -C "${SRC}" lib -j"$(nproc)"
     mkdir -p "${PREFIX}/lib" "${PREFIX}/include"
-    cp "${SRC}/library"/libmbedcrypto.a "${SRC}/library"/libmbedtls.a \
-       "${SRC}/library"/libmbedx509.a "${PREFIX}/lib/"
+    cp "${SRC}/library"/libmbedcrypto.a "${PREFIX}/lib/"
     cp -r "${SRC}/include/mbedtls" "${SRC}/include/psa" "${PREFIX}/include/"
 fi
 
 echo "==> Compiling test"
-PROTOCOMP="${REPO_ROOT}/components/tesla-protocol"
 cc -std=c99 -Wall -Wextra \
-   -I "${PROTOCOMP}" \
-   -I "${PROTOCOMP}/generated" \
-   -I "${PROTOCOMP}/nanopb" \
+   -I "${REPO_ROOT}/main" \
+   -I "${REPO_ROOT}/main/tesla" \
    -I "${PREFIX}/include" \
-   "${SCRIPT_DIR}/test_tesla_crypto.c" \
-   "${PROTOCOMP}/crypto.c" \
-   "${PROTOCOMP}/session.c" \
-   "${PROTOCOMP}/protobuf_build.c" \
-   "${PROTOCOMP}"/generated/*.pb.c \
-   "${PROTOCOMP}/nanopb/pb_common.c" \
-   "${PROTOCOMP}/nanopb/pb_decode.c" \
-   "${PROTOCOMP}/nanopb/pb_encode.c" \
-   -L "${PREFIX}/lib" -lmbedcrypto -lmbedtls -lmbedx509 \
-   -o "${WORK}/test_tesla_crypto"
+   "${SCRIPT_DIR}/test_tesla_advert_name.c" \
+   "${REPO_ROOT}/main/tesla/tesla_advert_name.c" \
+   -L "${PREFIX}/lib" -lmbedcrypto \
+   -o "${WORK}/test_tesla_advert_name"
 
 echo "==> Running test"
-"${WORK}/test_tesla_crypto"
+"${WORK}/test_tesla_advert_name" "$@"

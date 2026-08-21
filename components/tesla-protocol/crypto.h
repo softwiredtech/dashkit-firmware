@@ -37,6 +37,14 @@
 #define TESLA_SHA1_LEN 20
 #define TESLA_SHA256_LEN 32
 
+// A client P-256 keypair: big-endian private scalar + uncompressed public
+// point (0x04 || X || Y). Persisted by the pairing/storage layer and passed to
+// the session layer for ECDH and for signer identity.
+typedef struct {
+    uint8_t priv[TESLA_PRIVKEY_LEN];
+    uint8_t pub[TESLA_PUBKEY_LEN];
+} tesla_keypair_t;
+
 // RNG callback using the mbedtls f_rng convention (returns 0 on success).
 typedef int (*tesla_rng_fn)(void *ctx, uint8_t *buf, size_t len);
 

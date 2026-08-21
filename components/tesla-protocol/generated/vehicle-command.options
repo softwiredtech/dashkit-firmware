@@ -1,0 +1,53 @@
+# nanopb options for the vendored Tesla vehicle-command protos.
+#
+# Defaults: nanopb emits pb_callback_t for every `bytes` / `repeated` field
+# (streaming, no fixed buffer). On a microcontroller we want direct struct
+# access with no malloc, so every field the firmware actually touches is
+# configured to a fixed in-memory buffer (max_size) / fixed array (max_count).
+#
+# Because the firmware never allocates, fields it *doesn't* touch are left as
+# the default callback type and simply stay unset (pb_encode skips callbacks
+# whose func is NULL).
+#
+# Byte-source fields the wire always tags with a length; `max_size` is the
+# in-RAM buffer bound. `fixed_length` marks always-exactly-that-size values so
+# nanopb warns if a decode length mismatches; it does not change the wire
+# encoding (still protobuf length-delimited).
+#
+# Numbers stay within pb_size_t (uint8) so a payload buffer of 256 bytes is the
+# ceiling; that comfortably fits every VCSEC/Infotainment command we build and
+# every status/info response we parse over BLE.
+
+# ---- universal_message.proto ----
+UniversalMessage.Destination.routing_address          max_size:16
+UniversalMessage.SessionInfoRequest.public_key        max_size:65
+UniversalMessage.SessionInfoRequest.challenge         max_size:16
+UniversalMessage.RoutableMessage.protobuf_message_as_bytes max_size:256
+UniversalMessage.RoutableMessage.session_info         max_size:256
+UniversalMessage.RoutableMessage.request_uuid         max_size:16
+UniversalMessage.RoutableMessage.uuid                 max_size:16
+
+# ---- signatures.proto ----
+Signatures.KeyIdentity.public_key                     max_size:65
+Signatures.AES_GCM_Personalized_Signature_Data.epoch  max_size:16 fixed_length:true
+Signatures.AES_GCM_Personalized_Signature_Data.nonce  max_size:12 fixed_length:true
+Signatures.AES_GCM_Personalized_Signature_Data.tag    max_size:16 fixed_length:true
+Signatures.AES_GCM_Response_Signature_Data.nonce      max_size:12 fixed_length:true
+Signatures.AES_GCM_Response_Signature_Data.tag        max_size:16 fixed_length:true
+Signatures.HMAC_Signature_Data.tag                    max_size:32 fixed_length:true
+Signatures.HMAC_Personalized_Signature_Data.epoch     max_size:16 fixed_length:true
+Signatures.HMAC_Personalized_Signature_Data.tag       max_size:32 fixed_length:true
+Signatures.SessionInfo.publicKey                      max_size:65
+Signatures.SessionInfo.epoch                          max_size:16 fixed_length:true
+
+# ---- vcsec.proto ----
+VCSEC.PublicKey.PublicKeyRaw                          max_size:65
+VCSEC.KeyIdentifier.publicKeySHA1                     max_size:20 fixed_length:true
+VCSEC.WhitelistInfo.whitelistEntries                  max_count:16
+VCSEC.SignedMessage.protobufMessageAsBytes            max_size:256
+VCSEC.InformationRequest.publicKey                    max_size:65
+VCSEC.WhitelistInfo.numberOfEntries                   int_size:IS_16
+VCSEC.WhitelistInfo.slotMask                          int_size:IS_32
+
+# Note: car_server.proto (Infotainment) is generated but its fields are left at
+# the default callback type; command building for it lands in Phase 4/5.

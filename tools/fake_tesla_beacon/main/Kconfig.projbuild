@@ -1,0 +1,11 @@
+# Fake Tesla beacon menu.
+menu "Fake Tesla Beacon"
+    config FAKE_TESLA_NAME
+        string "Advertised local name"
+        default "Tesla 789ABC"
+        help
+            Local name the beacon advertises. Generate the correct strings for
+            your VIN by running:
+                tools/test/run_tesla_advert_name_test.sh <17-char-VIN>
+            and paste either the legacy or the modern name here.
+endmenu
