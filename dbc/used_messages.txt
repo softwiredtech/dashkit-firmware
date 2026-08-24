@@ -47,3 +47,4 @@ BMS_powerAvailable        1 filter  # app: regen / discharge power
 BMS_hvBusStatus           1 filter  # app: pack voltage / current
 BMS_bmbMinMax             1 filter  # app: pack temps
 DI_odometerStatus         1 filter  # app: odometer
+VIN_info                  1 filter  # app: VIN assembly (muxed VIN_A/B/C405 by VIN_infoIndex)
