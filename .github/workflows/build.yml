@@ -70,3 +70,35 @@ jobs:
           name: dashkit-firmware-${{ github.sha }}
           path: build/dashkit-firmware.bin
           retention-days: 14
+
+  # Host-side Tesla crypto/session unit tests. No ESP-IDF needed:
+  # the runner builds a pinned mbedTLS 3.6.2 into a local prefix.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache mbedTLS host build
+        uses: actions/cache@v4
+        with:
+          path: build/tesla-host-test
+          key: mbedtls-host-${{ runner.os }}-3.6.2
+
+      - name: Install protobuf toolchain (proto-sync check)
+        # Pinned: the committed bindings were regenerated with nanopb 0.4.9.1.
+        # Newer nanopb releases can shift emitted formatting/descriptors, which
+        # would fail the regen-drift check below as phantom drift. Bump this
+        # pin only together with a full tools/gen_proto.py regeneration.
+        run: pip install nanopb==0.4.9.1 grpcio-tools
+
+      - name: Verify vendored Tesla protos + generated bindings are in sync
+        run: bash tools/check_proto_sync.sh
+
+      - name: Run Tesla crypto known-answer tests
+        run: bash tools/test/run_tesla_crypto_test.sh
+
+      - name: Run Tesla session/protocol round-trip tests (handshake/command/response)
+        run: bash tools/test/run_tesla_session_test.sh
+
+      - name: Run Tesla enrollment tests (keygen + present-key message)
+        run: bash tools/test/run_tesla_enrollment_test.sh
