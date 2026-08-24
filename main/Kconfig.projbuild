@@ -1,0 +1,21 @@
+# DashKit project-configuration menu.
+#
+# CONFIG_DASHKIT_TESLA_BLE gates the Tesla BLE vehicle-command client: the
+# CENTRAL role connects to the car (VCSEC handshake + persistent GET_STATUS
+# poll), backed by main/tesla/ and the tesla-protocol component. There is no
+# observer/scan path — the app provisions the car's VIN + BLE address over the
+# app-channel service. Disabling the option removes the tesla/ modules and the
+# BLE central role from the build, so the stack stays exactly as a
+# dashboard-only device expects it.
+menu "DashKit"
+    config DASHKIT_TESLA_BLE
+        bool "Tesla BLE vehicle-command client"
+        depends on BT_ENABLED && BT_NIMBLE_ENABLED
+        select BT_NIMBLE_ROLE_CENTRAL
+        default y
+        help
+            Adds the Tesla BLE vehicle-command client (connect, VCSEC
+            handshake, persistent GET_STATUS poll) driven entirely from the
+            phone app. Disabling removes the tesla/ modules and the BLE
+            central role from the build.
+endmenu
