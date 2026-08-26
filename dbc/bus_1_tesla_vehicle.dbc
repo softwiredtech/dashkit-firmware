@@ -7156,14 +7156,13 @@ BO_ 644 UI_vehicleModes: 4 VEH
  SG_ UI_transportMode: 1|1@1+ (1,0) [0|0] "" X
 
 BO_ 595 UI_ventPanelControlRequest: 7 VEH
- SG_ UI_ventPanelLeftLateralMode: 48|1@1+ (1,0) [0|0] "" X
- SG_ UI_ventPanelLeftLateralSplit: 16|8@1+ (0.5,0) [0|0] "%" X
- SG_ UI_ventPanelLeftPositionX: 0|8@1+ (0.5,0) [0|0] "%" X
- SG_ UI_ventPanelLeftPositionY: 8|8@1+ (0.5,0) [0|0] "%" X
- SG_ UI_ventPanelRightLateralMode: 49|1@1+ (1,0) [0|0] "" X
- SG_ UI_ventPanelRightLateralSplit: 40|8@1+ (0.5,0) [0|0] "%" X
- SG_ UI_ventPanelRightPositionX: 24|8@1+ (0.5,0) [0|0] "%" X
- SG_ UI_ventPanelRightPositionY: 32|8@1+ (0.5,0) [0|0] "%" X
+ SG_ UI_ventPanelMultiplex: 0|8@1+ (1,0) [0|0] "" X
+ SG_ UI_ventPanelLeftPositionX: 8|8@1+ (0.5,0) [0|0] "%" X
+ SG_ UI_ventPanelLeftPositionY: 16|8@1+ (0.5,0) [0|0] "%" X
+ SG_ UI_ventPanelLeftLateralSplit: 24|8@1+ (0.5,0) [0|0] "%" X
+ SG_ UI_ventPanelRightPositionX: 32|8@1+ (0.5,0) [0|0] "%" X
+ SG_ UI_ventPanelRightPositionY: 40|8@1+ (0.5,0) [0|0] "%" X
+ SG_ UI_ventPanelRightLateralSplit: 48|8@1+ (0.5,0) [0|0] "%" X
 
 BO_ 824 UMC_alertMatrix1: 8 VEH
  SG_ UMC_a001_gndMonIntrptLineSide: 0|1@1+ (1,0) [0|0] "" X
