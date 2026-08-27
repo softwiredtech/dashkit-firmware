@@ -29,6 +29,7 @@ idf_component_register(
         "automation/multi_finger.c"
         "automation/climate_keep.c"
         "ble/ble_server.c"
+        "bthome/bthome.c"
         "ble/ble_ota.c"
         "ble/ble_appchan.c"
         ${TESLA_SRCS}
@@ -39,6 +40,7 @@ idf_component_register(
         "controls"
         "automation"
         "ble"
+        "bthome"
         "tesla"
     REQUIRES
         driver

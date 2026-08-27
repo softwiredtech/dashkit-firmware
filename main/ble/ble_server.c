@@ -1,6 +1,7 @@
 #include "ble_server.h"
 #include "ble_ota.h"
 #include "ble_appchan.h"
+#include "bthome.h"
 #include "can_filter.h"
 #include "can_manager.h"
 #include "can_interface.h"
@@ -751,6 +752,7 @@ static void on_sync(void)
     // is bonded, lock down until a paired device opens a pairing window.
     s_pairing_mode = (n_bonds == 0);
     start_advertising();
+    bthome_scan_start();
     ESP_LOGI(TAG, "BLE host synced, advertising as \"%s\" (pairing_mode=%d, addr_type=%d, bonds=%d)",
              DEVICE_NAME, s_pairing_mode, s_own_addr_type, n_bonds);
 }

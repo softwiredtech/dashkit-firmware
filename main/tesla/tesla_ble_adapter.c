@@ -9,6 +9,7 @@
  */
 
 #include "tesla_ble_adapter.h"
+#include "bthome.h"
 
 #include "protobuf_build.h"
 #include "esp_log.h"
@@ -393,6 +394,8 @@ static int central_gap_event_handler(struct ble_gap_event *event, void *arg)
 {
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT: {
+        // Initiating is over either way; scanning may run during a connection.
+        bthome_scan_resume();
         if (!generation_current(arg)) {
             ESP_LOGW(TAG, "ignoring stale central connect event generation=%lu",
                      (unsigned long)(uintptr_t)arg);
@@ -494,11 +497,15 @@ static esp_err_t central_connect_start(const void *addr)
     params.max_ce_len = 0;
 
     s_central.state = ST_CONNECTING;
+    // NimBLE cannot scan and initiate at once; the CONNECT event (success,
+    // failure or timeout) resumes the BTHome scan.
+    bthome_scan_pause();
     rc = ble_gap_connect(own_addr_type, peer, TESLA_CONNECT_TIMEOUT_MS,
                          &params, central_gap_event_handler,
                          (void *)(uintptr_t)s_central.generation);
     if (rc != 0) {
         ESP_LOGE(TAG, "ble_gap_connect failed: %d", rc);
+        bthome_scan_resume();
         return ESP_FAIL;
     }
     return ESP_OK;
