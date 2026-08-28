@@ -18,4 +18,13 @@ menu "DashKit"
             handshake, persistent GET_STATUS poll) driven entirely from the
             phone app. Disabling removes the tesla/ modules and the BLE
             central role from the build.
+
+    config DASHKIT_BTHOME
+        bool "BTHome button listener (Shelly BLU)"
+        depends on BT_ENABLED && BT_NIMBLE_ENABLED
+        select BT_NIMBLE_ROLE_OBSERVER
+        default n
+        help
+            Passive scan for BTHome v2 advertisements (Shelly BLU buttons),
+            mapping button events to vehicle controls. Work in progress.
 endmenu

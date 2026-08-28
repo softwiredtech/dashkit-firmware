@@ -16,6 +16,7 @@ CONFIG_BT_NIMBLE_MAX_CONNECTIONS=6
 CONFIG_BT_NIMBLE_GATT_MAX_PROCS=8
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
 CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+# Selected by DASHKIT_BTHOME when enabled.
 CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
 CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
@@ -43,9 +44,12 @@ CONFIG_BT_CTRL_BLE_MAX_ACT=8
 # Tesla BLE (vehicle-command) client: CENTRAL role for connect → VCSEC
 # handshake → persistent GET_STATUS poll (matches esphome-tesla-ble: the link
 # stays up and low-power VCSEC polling does not wake or hold awake the car).
-# No observer role — the app provisions VIN + car BLE address over the
-# app-channel service (CADA0201 opcode 0x04).
+# The car is never scanned for — the app provisions VIN + car BLE address over
+# the app-channel service (CADA0201 opcode 0x04).
 CONFIG_DASHKIT_TESLA_BLE=y
+
+# BTHome button listener (Shelly BLU), WIP — off by default.
+# CONFIG_DASHKIT_BTHOME=y
 
 # Partition table
 CONFIG_PARTITION_TABLE_CUSTOM=y
