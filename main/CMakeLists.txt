@@ -13,6 +13,12 @@ if(CONFIG_DASHKIT_TESLA_BLE)
     )
 endif()
 
+# BTHome listener (Shelly BLU), gated by DASHKIT_BTHOME (WIP, default off).
+set(BTHOME_SRCS "")
+if(CONFIG_DASHKIT_BTHOME)
+    list(APPEND BTHOME_SRCS "bthome/bthome.c")
+endif()
+
 idf_component_register(
     SRCS
         "main.c"
@@ -29,10 +35,10 @@ idf_component_register(
         "automation/multi_finger.c"
         "automation/climate_keep.c"
         "ble/ble_server.c"
-        "bthome/bthome.c"
         "ble/ble_ota.c"
         "ble/ble_appchan.c"
         ${TESLA_SRCS}
+        ${BTHOME_SRCS}
     INCLUDE_DIRS
         "."
         "can"

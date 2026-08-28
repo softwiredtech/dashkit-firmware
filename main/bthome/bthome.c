@@ -18,8 +18,12 @@ static const char *TAG = "bthome";
 #define OBJ_PACKET_ID       0x00
 #define OBJ_BUTTON_EVENT    0x3A
 
-// Button event values: 1=press 2=double 3=triple 4=long.
+// Button event values: 1=press 2=double 3=triple 4=long 0x80=hold. A slightly
+// slow press reports long/hold instead of press, so all three trigger the
+// action; double/triple stay reserved for future bindings.
 #define BUTTON_PRESS        0x01
+#define BUTTON_LONG_PRESS   0x04
+#define BUTTON_HOLD         0x80
 
 // Shelly BLU buttons repeat an event burst long enough that a 30 ms window
 // every 320 ms reliably catches it (the duty cycle ESPHome BLE proxies use),
@@ -167,7 +171,8 @@ static void handle_bthome(const uint8_t *addr, const uint8_t *p, uint8_t len)
 
     ESP_LOGI(TAG, "Button event 0x%02X from %02X:%02X:%02X:%02X:%02X:%02X",
              button, addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
-    if (button == BUTTON_PRESS) {
+    if (button == BUTTON_PRESS || button == BUTTON_LONG_PRESS ||
+        button == BUTTON_HOLD) {
         esp_err_t err = vehicle_control_submit(VC_CMD_GLOVEBOX, 1);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Glovebox submit failed: %s", esp_err_to_name(err));
