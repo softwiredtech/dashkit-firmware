@@ -168,7 +168,7 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_chargeEnableRequest", 2, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_acChargeCurrentLimit", 8, 7, 0, 1.0, 0.0, -1, -1 },
     { "UI_chargeTerminationPct", 16, 10, 0, 0.1, 0.0, -1, -1 },
-    // ---- UI_tripPlanning (0x082) ----
+    // ---- UI_tripPlanning (0x347) ----
     { "UI_tripPlanningActive", 0, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_navToSupercharger", 1, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_navSuperchargerType", 2, 3, 0, 1.0, 0.0, -1, -1 },
@@ -176,6 +176,7 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_requestBatteryHeating", 7, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_someValueA", 8, 8, 0, 1.0, 0.0, -1, -1 },
     { "UI_someValueB", 16, 8, 0, 1.0, 0.0, -1, -1 },
+    { "UI_someValueC", 24, 8, 0, 1.0, 0.0, -1, -1 },
     // ---- UI_hvacRequest (0x2F3) ----
     { "UI_hvacReqTempSetpointLeft", 0, 5, 0, 0.5, 15.0, -1, -1 },
     { "UI_hvacReqTempSetpointRight", 8, 5, 0, 0.5, 15.0, -1, -1 },
@@ -216,16 +217,16 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_vehicleControl", 0x273, 8, 1, 92, 39, DBC_CKSUM_NONE, -1, -1 },
     { "UI_vehicleControl2", 0x3B3, 2, 1, 131, 23, DBC_CKSUM_NONE, -1, -1 },
     { "UI_chargeRequest", 0x333, 4, 1, 154, 5, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_tripPlanning", 0x082, 8, 1, 159, 7, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_hvacRequest", 0x2F3, 5, 1, 166, 11, DBC_CKSUM_NONE, -1, -1 },
-    { "DAS_status2", 0x389, 8, 0, 177, 17, DBC_CKSUM_TESLA_BYTESUM, 193, 192 },
+    { "UI_tripPlanning", 0x347, 8, 1, 159, 8, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_hvacRequest", 0x2F3, 5, 1, 167, 11, DBC_CKSUM_NONE, -1, -1 },
+    { "DAS_status2", 0x389, 8, 0, 178, 17, DBC_CKSUM_TESLA_BYTESUM, 194, 193 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {
     0x129, 0x118, 0x257, 0x399, 0x389, 0x25D,
 };
 static const uint16_t hw_filter_bus1_ids[] = {
-    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x082, 0x2F3, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405,
+    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405,
 };
 const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {
     { hw_filter_bus0_ids, 6 },

@@ -20,7 +20,7 @@ typedef enum {
     // --- UI_vehicleControl2 (0x3B3) ---
     VC_CMD_GLOVEBOX          = 0x0F,  // UI_gloveboxRequest: 1=open (latch release)
 
-    // --- Battery preheat (faked UI_tripPlanning 0x082 injection) ---
+    // --- Battery preheat (faked UI_tripPlanning 0x347 injection; was 0x082 pre-2026 FW) ---
     VC_CMD_BATTERY_PREHEAT   = 0x35,  // 1=start faking preheat, 0=stop
 
     // --- Infotainment multi-finger tap binding ---
