@@ -29,7 +29,7 @@ typedef enum {
     // finger count (3..5) in the high byte and the action in the low byte:
     //   value = (fingers << 8) | multi_finger_action_t
     // action: 0=none 1=glovebox 2=preheat 3=mirror_fold 4=frunk 5=trunk
-    //         6=charge_port.
+    //         6=charge_port 7=rear_fan 8=mirror_dip.
     VC_CMD_MULTI_FINGER_ACTION = 0x40,
 
     // --- Auto wiper-off automation toggle ---
@@ -64,6 +64,11 @@ typedef enum {
     // Config only (not a CAN frame): how long the climate-keep automation runs
     // after the driver leaves, in minutes (clamped to 1..60). Persisted in NVS.
     VC_CMD_CLIMATE_KEEP_DURATION = 0x47,
+
+    // --- Toggle mirror dip on reverse (UI_vehicleControl 0x273) ---
+    // Flips UI_mirrorDipOnReverse to the opposite of its live value (RMW burst).
+    // value is ignored.
+    VC_CMD_MIRROR_DIP_TOGGLE = 0x48,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.

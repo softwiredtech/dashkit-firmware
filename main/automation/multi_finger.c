@@ -92,6 +92,11 @@ static void set_action(uint8_t fingers, uint8_t action)
         return;
     }
     uint8_t idx = fingers - MULTI_FINGER_MIN_FINGERS;
+    if (idx == 0) {
+        ESP_LOGW(TAG, "3-finger action is pinned to %u, ignoring %u",
+                 MULTI_FINGER_FORCED_3_ACTION, action);
+        return;
+    }
     if (action != s_actions[idx]) {
         ESP_LOGW(TAG, "%u-finger action set to %u", fingers, action);
         s_actions[idx] = action;
@@ -136,6 +141,10 @@ static void fire_action(uint8_t fingers, uint8_t action)
         ESP_LOGI(TAG, "%u-finger tap -> rear fan toggle", fingers);
         vehicle_control_submit(VC_CMD_REAR_FAN_TOGGLE, 0);
         break;
+    case MULTI_FINGER_ACTION_MIRROR_DIP:
+        ESP_LOGI(TAG, "%u-finger tap -> mirror dip toggle", fingers);
+        vehicle_control_submit(VC_CMD_MIRROR_DIP_TOGGLE, 0);
+        break;
     default:
         break;
     }
@@ -149,6 +158,7 @@ static void multi_finger_init(automation_t *self)
         s_actions[i] = MULTI_FINGER_ACTION_NONE;
     }
     load_actions();
+    s_actions[0] = MULTI_FINGER_FORCED_3_ACTION;
     s_max_points = 0;
     s_last_fire_us = 0;
     s_last_logged_points = 0xFF;
