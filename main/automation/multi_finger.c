@@ -92,11 +92,6 @@ static void set_action(uint8_t fingers, uint8_t action)
         return;
     }
     uint8_t idx = fingers - MULTI_FINGER_MIN_FINGERS;
-    if (idx == 0) {
-        ESP_LOGW(TAG, "3-finger action is pinned to %u, ignoring %u",
-                 MULTI_FINGER_FORCED_3_ACTION, action);
-        return;
-    }
     if (action != s_actions[idx]) {
         ESP_LOGW(TAG, "%u-finger action set to %u", fingers, action);
         s_actions[idx] = action;
@@ -158,7 +153,6 @@ static void multi_finger_init(automation_t *self)
         s_actions[i] = MULTI_FINGER_ACTION_NONE;
     }
     load_actions();
-    s_actions[0] = MULTI_FINGER_FORCED_3_ACTION;
     s_max_points = 0;
     s_last_fire_us = 0;
     s_last_logged_points = 0xFF;

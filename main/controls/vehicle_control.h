@@ -66,8 +66,9 @@ typedef enum {
     VC_CMD_CLIMATE_KEEP_DURATION = 0x47,
 
     // --- Toggle mirror dip on reverse (UI_vehicleControl 0x273) ---
-    // Flips UI_mirrorDipOnReverse to the opposite of its live value (RMW burst).
-    // value is ignored.
+    // Flips UI_mirrorDipOnReverse to the opposite of its live value (continuous
+    // RMW injection). Only acts while DI_gear == R; injection stops when the
+    // car leaves reverse. value is ignored.
     VC_CMD_MIRROR_DIP_TOGGLE = 0x48,
 } vehicle_control_opcode_t;
 

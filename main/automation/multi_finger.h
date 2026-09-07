@@ -18,9 +18,6 @@ typedef enum {
     MULTI_FINGER_ACTION_MIRROR_DIP  = 8,
 } multi_finger_action_t;
 
-// 3 fingers always fires this; NVS / app bindings for 3 are ignored.
-#define MULTI_FINGER_FORCED_3_ACTION  MULTI_FINGER_ACTION_MIRROR_DIP
-
 #define MULTI_FINGER_MIN_FINGERS  3
 #define MULTI_FINGER_MAX_FINGERS  5
 

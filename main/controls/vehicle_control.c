@@ -25,6 +25,9 @@ static const char *TAG = "veh_ctrl";
 
 #define INJECT_MS  10  // 100Hz, out-runs the car's own frame
 
+#define GEAR_BUS      0
+#define GEAR_REVERSE  2
+
 typedef struct {
     uint8_t     opcode;
     const char *msg;
@@ -147,11 +150,23 @@ static void rear_fan_toggle(void)
     s_rear_fan.target = target;
 }
 
+static bool in_reverse(void)
+{
+    double gear;
+    return can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &gear, false) == ESP_OK
+           && (int)gear == GEAR_REVERSE;
+}
+
 // Flip the bit relative to what is currently in effect (our injected value if
 // active, else the car's). Injecting the car's own value is pointless, so a
-// toggle back to it just stops the injector.
+// toggle back to it just stops the injector. Only meaningful in reverse; the
+// injector drops out on its own once the car leaves reverse.
 static void mirror_dip_toggle(void)
 {
+    if (!in_reverse()) {
+        ESP_LOGI(TAG, "mirror dip: not in reverse, ignoring");
+        return;
+    }
     double cur;
     if (can_get(VC_BUS, s_mirror_dip.msg, s_mirror_dip.sig, &cur, false) != ESP_OK) {
         ESP_LOGW(TAG, "mirror dip: no live UI_vehicleControl frame");
@@ -202,6 +217,10 @@ static void inject_task(void *arg)
     (void)arg;
     while (true) {
         injector_step(&s_rear_fan);
+        if (s_mirror_dip.target >= 0 && !in_reverse()) {
+            ESP_LOGI(TAG, "mirror dip: left reverse, stop injecting");
+            s_mirror_dip.target = -1;
+        }
         injector_step(&s_mirror_dip);
         vTaskDelay(pdMS_TO_TICKS(INJECT_MS));
     }
