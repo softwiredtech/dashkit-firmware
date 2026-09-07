@@ -136,6 +136,10 @@ static void fire_action(uint8_t fingers, uint8_t action)
         ESP_LOGI(TAG, "%u-finger tap -> rear fan toggle", fingers);
         vehicle_control_submit(VC_CMD_REAR_FAN_TOGGLE, 0);
         break;
+    case MULTI_FINGER_ACTION_MIRROR_DIP:
+        ESP_LOGI(TAG, "%u-finger tap -> mirror dip toggle", fingers);
+        vehicle_control_submit(VC_CMD_MIRROR_DIP_TOGGLE, 0);
+        break;
     default:
         break;
     }

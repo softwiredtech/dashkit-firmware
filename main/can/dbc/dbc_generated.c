@@ -189,6 +189,21 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_hvacReqSecondRowState", 29, 3, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacUseModeledDuctTemp", 32, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacReqKeepClimateOn", 33, 2, 0, 1.0, 0.0, -1, -1 },
+    // ---- DI_systemStatus (0x118) ----
+    { "DI_systemStatusChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
+    { "DI_systemStatusCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
+    { "DI_driveBlocked", 12, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DI_systemState", 16, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DI_brakePedalState", 19, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DI_gear", 21, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DI_regenLight", 26, 1, 0, 1.0, 0.0, -1, -1 },
+    { "DI_immobilizerState", 27, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DI_accelPedalPos", 32, 8, 0, 0.4, 0.0, -1, -1 },
+    { "DI_tractionControlMode", 40, 3, 0, 1.0, 0.0, -1, -1 },
+    { "DI_epbRequest", 44, 2, 0, 1.0, 0.0, -1, -1 },
+    { "DI_proximity", 46, 1, 0, 1.0, 0.0, -1, -1 },
+    { "DI_keepAliveRequest", 47, 1, 0, 1.0, 0.0, -1, -1 },
+    { "DI_trackModeState", 48, 2, 0, 1.0, 0.0, -1, -1 },
     // ---- DAS_status2 (0x389) ----
     { "DAS_accSpeedLimit", 0, 10, 0, 0.2, 0.0, -1, -1 },
     { "DAS_pmmObstacleSeverity", 10, 3, 0, 1.0, 0.0, -1, -1 },
@@ -219,7 +234,8 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_chargeRequest", 0x333, 4, 1, 154, 5, DBC_CKSUM_NONE, -1, -1 },
     { "UI_tripPlanning", 0x347, 8, 1, 159, 8, DBC_CKSUM_NONE, -1, -1 },
     { "UI_hvacRequest", 0x2F3, 5, 1, 167, 11, DBC_CKSUM_NONE, -1, -1 },
-    { "DAS_status2", 0x389, 8, 0, 178, 17, DBC_CKSUM_TESLA_BYTESUM, 194, 193 },
+    { "DI_systemStatus", 0x118, 8, 0, 178, 14, DBC_CKSUM_TESLA_BYTESUM, 178, 179 },
+    { "DAS_status2", 0x389, 8, 0, 192, 17, DBC_CKSUM_TESLA_BYTESUM, 208, 207 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {

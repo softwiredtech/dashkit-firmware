@@ -22,7 +22,13 @@ static const char *TAG = "veh_ctrl";
 #define REAR_FAN_AUTO       0
 #define REAR_FAN_OFF        1
 #define REAR_FAN_HIGH       4
-#define REAR_FAN_INJECT_MS  10
+
+#define INJECT_TICK_MS      5   // injector loop period; per-injector rates are multiples
+#define REAR_FAN_INJECT_MS   10
+#define MIRROR_DIP_INJECT_MS 5   // car's 0x273 is ~500ms; 200Hz keeps its frames from landing
+
+#define GEAR_BUS      0
+#define GEAR_REVERSE  2
 
 typedef struct {
     uint8_t     opcode;
@@ -48,8 +54,21 @@ typedef struct {
 
 static QueueHandle_t s_queue = NULL;
 
-static volatile int s_rear_fan_target = -1;
-static volatile int s_rear_fan_baseline = -1;
+// Continuous RMW injector: overrides one signal on the car's live frame every
+// period_ms until the car's own value moves away from the baseline captured
+// at start (driver changed it in the UI) or target is cleared.
+typedef struct {
+    const char  *name;
+    const char  *msg;
+    const char  *sig;
+    unsigned     period_ms;
+    unsigned     elapsed_ms;
+    volatile int target;    // -1 = idle
+    volatile int baseline;  // car's value when injection started, -1 = unknown
+} injector_t;
+
+static injector_t s_rear_fan   = { "rear fan",   "UI_hvacRequest",    "UI_hvacReqSecondRowState", REAR_FAN_INJECT_MS,   0, -1, -1 };
+static injector_t s_mirror_dip = { "mirror dip", "UI_vehicleControl", "UI_mirrorDipOnReverse",    MIRROR_DIP_INJECT_MS, 0, -1, -1 };
 
 // Config opcodes are not CAN frames: they route to an automation's on_config.
 static bool is_config_opcode(uint8_t opcode)
@@ -115,56 +134,102 @@ static void send_rmw_pulse(const vc_command_t *cmd, uint16_t value)
 
 static void rear_fan_toggle(void)
 {
-    if (s_rear_fan_target >= 0) {
-        ESP_LOGI(TAG, "rear fan: stop injecting (was %d)", s_rear_fan_target);
-        s_rear_fan_target = -1;
+    if (s_rear_fan.target >= 0) {
+        ESP_LOGI(TAG, "rear fan: stop injecting (was %d)", s_rear_fan.target);
+        s_rear_fan.target = -1;
         return;
     }
     double cur;
     int target;
-    if (can_get(VC_BUS, "UI_hvacRequest", "UI_hvacReqSecondRowState", &cur, false) == ESP_OK) {
+    if (can_get(VC_BUS, s_rear_fan.msg, s_rear_fan.sig, &cur, false) == ESP_OK) {
         int s = (int)cur;
-        s_rear_fan_baseline = s;
+        s_rear_fan.baseline = s;
         target = (s == REAR_FAN_AUTO || s == REAR_FAN_OFF) ? REAR_FAN_HIGH : REAR_FAN_OFF;
-        ESP_LOGI(TAG, "rear fan: bus=%d, inject %d @ %dms", s, target, REAR_FAN_INJECT_MS);
+        ESP_LOGI(TAG, "rear fan: bus=%d, inject %d @ %ums", s, target, s_rear_fan.period_ms);
     } else {
-        s_rear_fan_baseline = -1;  // unknown: injector captures it on first read
+        s_rear_fan.baseline = -1;  // unknown: injector captures it on first read
         target = REAR_FAN_HIGH;  // no live frame yet: default to turning it on
-        ESP_LOGW(TAG, "rear fan: no live frame, inject %d @ %dms", target, REAR_FAN_INJECT_MS);
+        ESP_LOGW(TAG, "rear fan: no live frame, inject %d @ %ums", target, s_rear_fan.period_ms);
     }
-    s_rear_fan_target = target;
+    s_rear_fan.target = target;
 }
 
-static bool rear_fan_externally_changed(void)
+static bool in_reverse(void)
+{
+    double gear;
+    return can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &gear, false) == ESP_OK
+           && (int)gear == GEAR_REVERSE;
+}
+
+// Flip the bit relative to what is currently in effect (our injected value if
+// active, else the car's). Injecting the car's own value is pointless, so a
+// toggle back to it just stops the injector. Only meaningful in reverse; the
+// injector drops out on its own once the car leaves reverse.
+static void mirror_dip_toggle(void)
+{
+    if (!in_reverse()) {
+        ESP_LOGI(TAG, "mirror dip: not in reverse, ignoring");
+        return;
+    }
+    double cur;
+    if (can_get(VC_BUS, s_mirror_dip.msg, s_mirror_dip.sig, &cur, false) != ESP_OK) {
+        ESP_LOGW(TAG, "mirror dip: no live UI_vehicleControl frame");
+        return;
+    }
+    int bus = (int)cur;
+    int effective = (s_mirror_dip.target >= 0) ? s_mirror_dip.target : bus;
+    int target = effective ? 0 : 1;
+    if (target == bus) {
+        ESP_LOGI(TAG, "mirror dip: %d -> %d (car's value), stop injecting", effective, target);
+        s_mirror_dip.target = -1;
+        return;
+    }
+    s_mirror_dip.baseline = bus;
+    s_mirror_dip.target = target;
+    ESP_LOGI(TAG, "mirror dip: %d -> %d, inject @ %ums", effective, target, s_mirror_dip.period_ms);
+}
+
+static bool injector_externally_changed(injector_t *inj)
 {
     double cur;
-    if (can_get(VC_BUS, "UI_hvacRequest", "UI_hvacReqSecondRowState", &cur, false) != ESP_OK) {
+    if (can_get(VC_BUS, inj->msg, inj->sig, &cur, false) != ESP_OK) {
         return false;
     }
     int v = (int)cur;
-    if (s_rear_fan_baseline < 0) {
-        s_rear_fan_baseline = v;
+    if (inj->baseline < 0) {
+        inj->baseline = v;
         return false;
     }
-    return v != s_rear_fan_baseline;
+    return v != inj->baseline;
 }
 
-static void rear_fan_inject_task(void *arg)
+static void injector_step(injector_t *inj)
+{
+    int target = inj->target;
+    if (target < 0) return;
+    inj->elapsed_ms += INJECT_TICK_MS;
+    if (inj->elapsed_ms < inj->period_ms) return;
+    inj->elapsed_ms = 0;
+    if (injector_externally_changed(inj)) {
+        ESP_LOGI(TAG, "%s: bus changed from baseline %d, stop injecting",
+                 inj->name, inj->baseline);
+        inj->target = -1;
+        return;
+    }
+    can_send_live(VC_BUS, inj->msg, inj->sig, target, false);
+}
+
+static void inject_task(void *arg)
 {
     (void)arg;
     while (true) {
-        int target = s_rear_fan_target;
-        if (target >= 0) {
-            if (rear_fan_externally_changed()) {
-                ESP_LOGI(TAG, "rear fan: bus changed from baseline %d, stop injecting",
-                         s_rear_fan_baseline);
-                s_rear_fan_target = -1;
-            } else {
-                can_send_live(VC_BUS, "UI_hvacRequest", "UI_hvacReqSecondRowState",
-                              target, false);
-            }
+        injector_step(&s_rear_fan);
+        if (s_mirror_dip.target >= 0 && !in_reverse()) {
+            ESP_LOGI(TAG, "mirror dip: left reverse, stop injecting");
+            s_mirror_dip.target = -1;
         }
-        vTaskDelay(pdMS_TO_TICKS(REAR_FAN_INJECT_MS));
+        injector_step(&s_mirror_dip);
+        vTaskDelay(pdMS_TO_TICKS(INJECT_TICK_MS));
     }
 }
 
@@ -182,6 +247,10 @@ static void vehicle_control_task(void *arg)
         }
         if (req.opcode == VC_CMD_REAR_FAN_TOGGLE) {
             rear_fan_toggle();
+            continue;
+        }
+        if (req.opcode == VC_CMD_MIRROR_DIP_TOGGLE) {
+            mirror_dip_toggle();
             continue;
         }
         if (req.opcode == VC_CMD_REBOOT) {
@@ -213,7 +282,7 @@ esp_err_t vehicle_control_init(void)
         return ESP_ERR_NO_MEM;
     }
     xTaskCreatePinnedToCore(vehicle_control_task, "veh_ctrl", 4096, NULL, 5, NULL, 0);
-    xTaskCreatePinnedToCore(rear_fan_inject_task, "rear_fan_inj", 4096, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(inject_task, "vc_inject", 4096, NULL, 5, NULL, 0);
     ESP_LOGI(TAG, "vehicle control initialized (%u commands)", (unsigned)VC_COMMAND_COUNT);
     return ESP_OK;
 }
@@ -225,6 +294,7 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
     }
     if (opcode != VC_CMD_ENTER_PAIRING &&
         opcode != VC_CMD_REAR_FAN_TOGGLE &&
+        opcode != VC_CMD_MIRROR_DIP_TOGGLE &&
         opcode != VC_CMD_REBOOT &&
         !is_config_opcode(opcode) &&
         !find_command(opcode)) {
