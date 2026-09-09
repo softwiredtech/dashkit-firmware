@@ -104,6 +104,8 @@ static size_t build_ble_packet(const can_tagged_frame_t *frames, int count, uint
     return pos;
 }
 
+static bool can_hw_start(void);
+
 // Task that bridges CAN frames to BLE notifications
 static void can_to_ble_task(void *arg)
 {
@@ -165,6 +167,49 @@ void app_main(void)
 
     ESP_ERROR_CHECK(vehicle_control_init());
 
+    // BLE comes up before the CAN hardware so a failed transceiver never makes
+    // the device invisible to the app (diagnostics + OTA stay reachable).
+    ESP_ERROR_CHECK(ble_server_init());
+    ESP_ERROR_CHECK(ble_ota_init());
+    ESP_ERROR_CHECK(ble_appchan_init());
+    ESP_ERROR_CHECK(ble_server_start());
+
+#if defined(CONFIG_DASHKIT_TESLA_BLE)
+    // Boot canary for the Tesla link: role state must be visible and a missing
+    // key/link must not be silent. The app provisions the car (opcode 0x04)
+    // and starts enrollment (0x01); until then the firmware only reports
+    // "never enrolled".
+    ESP_LOGI(TAG, "Tesla BLE: enabled (central=%d). Persistent VCSEC status "
+                  "poll; enrollment is provisioned + started from the app.",
+             CONFIG_BT_NIMBLE_ROLE_CENTRAL);
+    ESP_ERROR_CHECK(tesla_pairing_init());
+    ESP_ERROR_CHECK(tesla_ble_client_init());
+#endif
+
+    // Bridge task: CAN -> BLE (idles on the empty queue until CAN starts)
+    xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 8192, NULL, 5, NULL, 0);
+
+    bool can_ok = can_hw_start();
+
+    ESP_LOGI(TAG, "DashKit firmware ready (can=%s)", can_ok ? "ok" : "FAILED");
+
+    // Commit this image once it has survived the boot window (OTA rollback).
+    // Confirmed even when CAN failed: a pending image cannot start another OTA,
+    // and with BLE up a CAN fault is visible and fixable forward.
+    const esp_timer_create_args_t mv_args = {
+        .callback = mark_app_valid_cb,
+        .name = "ota_mark_valid",
+    };
+    esp_timer_handle_t mv_timer;
+    ESP_ERROR_CHECK(esp_timer_create(&mv_args, &mv_timer));
+    ESP_ERROR_CHECK(esp_timer_start_once(mv_timer, MARK_VALID_DELAY_MS * 1000ULL));
+
+    led_set_color(can_ok ? LED_COLOR_GREEN : LED_COLOR_RED);
+}
+
+// Create and start both MCP2518FD interfaces. False on any failure.
+static bool can_hw_start(void)
+{
     // CAN interface 0 (MCP2518FD)
     mcp251xfd_config_t can0_cfg = {
         .spi_host     = CAN0_SPI_HOST,
@@ -182,8 +227,7 @@ void app_main(void)
     can_interface_t *can0 = mcp251xfd_create(&can0_cfg);
     if (!can0) {
         ESP_LOGE(TAG, "Failed to create CAN0 interface");
-        led_set_color(LED_COLOR_RED);
-        return;
+        return false;
     }
     ESP_ERROR_CHECK(can_manager_add_interface(can0));
 
@@ -204,50 +248,14 @@ void app_main(void)
     can_interface_t *can1 = mcp251xfd_create(&can1_cfg);
     if (!can1) {
         ESP_LOGE(TAG, "Failed to create CAN1 interface");
-        led_set_color(LED_COLOR_RED);
-        return;
+        return false;
     }
     ESP_ERROR_CHECK(can_manager_add_interface(can1));
 
-    // Start CAN
-    err = can_manager_start();
+    esp_err_t err = can_manager_start();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "CAN manager start failed");
-        led_set_color(LED_COLOR_RED);
-        return;
+        ESP_LOGE(TAG, "CAN manager start failed: %s", esp_err_to_name(err));
+        return false;
     }
-
-    // BLE
-    ESP_ERROR_CHECK(ble_server_init());
-    ESP_ERROR_CHECK(ble_ota_init());
-    ESP_ERROR_CHECK(ble_appchan_init());
-    ESP_ERROR_CHECK(ble_server_start());
-
-#if defined(CONFIG_DASHKIT_TESLA_BLE)
-    // Boot canary for the Tesla link: role state must be visible and a missing
-    // key/link must not be silent. The app provisions the car (opcode 0x04)
-    // and starts enrollment (0x01); until then the firmware only reports
-    // "never enrolled".
-    ESP_LOGI(TAG, "Tesla BLE: enabled (central=%d). Persistent VCSEC status "
-                  "poll; enrollment is provisioned + started from the app.",
-             CONFIG_BT_NIMBLE_ROLE_CENTRAL);
-    ESP_ERROR_CHECK(tesla_pairing_init());
-    ESP_ERROR_CHECK(tesla_ble_client_init());
-#endif
-
-    // Bridge task: CAN -> BLE
-    xTaskCreatePinnedToCore(can_to_ble_task, "can2ble", 8192, NULL, 5, NULL, 0);
-
-    ESP_LOGI(TAG, "DashKit firmware ready");
-
-    // Commit this image once it has survived the boot window (OTA rollback).
-    const esp_timer_create_args_t mv_args = {
-        .callback = mark_app_valid_cb,
-        .name = "ota_mark_valid",
-    };
-    esp_timer_handle_t mv_timer;
-    ESP_ERROR_CHECK(esp_timer_create(&mv_args, &mv_timer));
-    ESP_ERROR_CHECK(esp_timer_start_once(mv_timer, MARK_VALID_DELAY_MS * 1000ULL));
-
-    led_set_color(LED_COLOR_GREEN);
+    return true;
 }
