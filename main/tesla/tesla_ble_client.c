@@ -38,7 +38,6 @@ static const char *TAG = "tesla_client";
 // cycle. Re-report "not connected" to the app only after the link has been down
 // for STATUS_DEBOUNCE_MS (a transient RF drop shouldn't flip the phone's tile).
 #define STATUS_POLL_MS       (POLL_INTERVAL_S * 1000)
-#define RECONNECT_RETRY_MS   10000
 #define STATUS_DEBOUNCE_MS   300000
 
 // Vehicle frames are capped by TESLA_RX_FRAME_MAX (tesla_ble_adapter.h) so
@@ -355,6 +354,7 @@ static void client_task(void *arg)
     tesla_car_addr_t addr;
     char vin[32];
     uint64_t last_good_ms = 0;   // last successful status poll; 0 = never yet
+    uint32_t retry_ms = RECONNECT_BASE_S * 1000;
 
     while (true) {
         if (!load_config(&key, &addr, vin)) {
@@ -375,10 +375,7 @@ static void client_task(void *arg)
                  addr.val[1], addr.val[0]);
         if (tesla_ble_connect(&addr, CONNECT_TIMEOUT_MS) != ESP_OK) {
             ESP_LOGW(TAG, "connect failed");
-            tesla_ble_disconnect();
-            report_link_debounced(&last_good_ms);
-            vTaskDelay(pdMS_TO_TICKS(RECONNECT_RETRY_MS));
-            continue;
+            goto link_down;
         }
 
         // VCSEC handshake (fresh each connect — the boot-relative clock cannot
@@ -436,6 +433,7 @@ static void client_task(void *arg)
                     break;
                 }
                 last_good_ms = now_ms();
+                retry_ms = RECONNECT_BASE_S * 1000;
                 vTaskDelay(pdMS_TO_TICKS(STATUS_POLL_MS));
             }
         }
@@ -443,7 +441,14 @@ static void client_task(void *arg)
     link_down:
         tesla_ble_disconnect();
         report_link_debounced(&last_good_ms);
-        vTaskDelay(pdMS_TO_TICKS(RECONNECT_RETRY_MS));
+        // Back off exponentially while unreachable; reset by any good status.
+        ESP_LOGI(TAG, "next connect attempt in %lu s",
+                 (unsigned long)(retry_ms / 1000));
+        vTaskDelay(pdMS_TO_TICKS(retry_ms));
+        retry_ms *= 2;
+        if (retry_ms > RECONNECT_MAX_S * 1000) {
+            retry_ms = RECONNECT_MAX_S * 1000;
+        }
     }
 }
 
