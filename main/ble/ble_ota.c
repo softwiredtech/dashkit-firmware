@@ -347,7 +347,8 @@ static const struct ble_gatt_svc_def s_ota_svc_def[] = {
                 .access_cb = ota_status_access,
                 .val_handle = &s_ota_status_val_handle,
                 .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ
-                       | BLE_GATT_CHR_F_READ_ENC,
+                       | BLE_GATT_CHR_F_READ_ENC
+                       | BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC,
             },
             { 0 },  // Terminator
         },

@@ -17,7 +17,7 @@ brew install cmake ninja dfu-util
 
 ### 2. Clone and set up ESP-IDF
 
-ESP-IDF v5.4.1 is included as a git submodule:
+ESP-IDF v5.4.4 is included as a git submodule:
 
 ```bash
 git submodule update --init --recursive
