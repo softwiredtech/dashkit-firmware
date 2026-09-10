@@ -24,10 +24,6 @@
 // Provided by the NimBLE store/config component (NVS-backed bond storage).
 void ble_store_config_init(void);
 
-// Sets the ATT permissions for every CCCD (the descriptor a client writes to
-// subscribe). Declared only in NimBLE's private ble_gatt_priv.h.
-void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
-
 static const char *TAG = "ble";
 
 #define DEVICE_NAME "DashKit"
@@ -434,8 +430,11 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         // Bonded peers get their CCCD restored at encryption time.
         update_active();
 
-        ble_gap_set_prefered_le_phy(ch, BLE_GAP_LE_PHY_2M_MASK,
-                                    BLE_GAP_LE_PHY_2M_MASK,
+        // 1M, not 2M: on 2M the phone's controller dropped the encrypted
+        // stream every ~10 min with a MIC failure (Android status 61). 1M has
+        // better sensitivity and the CAN stream needs a fraction of its rate.
+        ble_gap_set_prefered_le_phy(ch, BLE_GAP_LE_PHY_1M_MASK,
+                                    BLE_GAP_LE_PHY_1M_MASK,
                                     BLE_GAP_LE_PHY_CODED_ANY);
         break;
     }
@@ -700,8 +699,11 @@ static const struct ble_gatt_svc_def s_can_svc_def[] = {
                 .uuid = &s_chr_uuid.u,
                 .access_cb = gatt_chr_access,
                 .val_handle = &s_chr_val_handle,
+                // NOTIFY_INDICATE_ENC: subscribing (CCCD write) needs an
+                // encrypted link, or the CAN stream reaches unpaired devices.
                 .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ
-                       | BLE_GATT_CHR_F_READ_ENC,
+                       | BLE_GATT_CHR_F_READ_ENC
+                       | BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC,
             },
             {
                 .uuid = &s_filter_uuid.u,
@@ -823,12 +825,6 @@ esp_err_t ble_server_init(void)
     // Register GATT services
     ble_svc_gap_init();
     ble_svc_gatt_init();
-
-    // Require encryption to subscribe: the char's READ_ENC gates client reads,
-    // not server notifications, so without this the CAN stream reaches unpaired
-    // devices. Must run before ble_gatts_add_svcs() registers the CCCDs.
-    ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_READ_ENC |
-                                     BLE_ATT_F_WRITE | BLE_ATT_F_WRITE_ENC);
 
     rc = ble_gatts_count_cfg(s_gatt_svcs);
     if (rc != 0) {
