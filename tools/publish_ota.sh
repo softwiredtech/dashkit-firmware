@@ -16,11 +16,15 @@
 #
 set -euo pipefail
 
-BUCKET="xreport-f792c.appspot.com"
+# Firebase project "dashkit-connect" (default Storage bucket). Releases up to
+# 0.1.3 live in the old xreport-f792c.appspot.com bucket, which apps built
+# before the move still read.
+BUCKET="dashkit-connect.firebasestorage.app"
 PREFIX="dashkit"
 
-# These MUST match the tokens baked into the app + committed manifest:
+# These MUST match the tokens baked into the apps + committed manifest:
 #   android: FirmwareUpdateRepository.MANIFEST_URL
+#   ios:     FirmwareUpdateRepository.manifestURL (FirmwareUpdateManager.swift)
 #   firmware: ota/manifest.json (url field)
 MANIFEST_TOKEN="68bcc03a-3951-454d-8f35-f5ab06c0ed0a"
 BIN_TOKEN="684a672c-53cd-48a4-a325-50e25b807b0b"
