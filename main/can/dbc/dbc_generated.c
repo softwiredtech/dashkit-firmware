@@ -189,6 +189,20 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_hvacReqSecondRowState", 29, 3, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacUseModeledDuctTemp", 32, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacReqKeepClimateOn", 33, 2, 0, 1.0, 0.0, -1, -1 },
+    // ---- UI_powertrainControl (0x334) ----
+    { "UI_systemPowerLimit", 0, 5, 0, 20.0, 20.0, -1, -1 },
+    { "UI_pedalMap", 5, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_systemTorqueLimit", 8, 6, 0, 100.0, 4000.0, -1, -1 },
+    { "UI_speedLimit", 16, 8, 0, 1.0, 50.0, -1, -1 },
+    { "UI_regenTorqueMax", 24, 8, 0, 0.5, 0.0, -1, -1 },
+    { "UI_limitMode", 32, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_creepTorque", 34, 1, 0, 1.0, 0.0, -1, -1 },
+    { "UI_motorOnMode", 35, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_wasteMode", 37, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_wasteModeRegenLimit", 40, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_trackModeRequest", 42, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_powertrainControlCounter", 52, 4, 0, 1.0, 0.0, -1, -1 },
+    { "UI_powertrainControlChecksum", 56, 8, 0, 1.0, 0.0, -1, -1 },
     // ---- DI_systemStatus (0x118) ----
     { "DI_systemStatusChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
     { "DI_systemStatusCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
@@ -234,17 +248,18 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_chargeRequest", 0x333, 4, 1, 154, 5, DBC_CKSUM_NONE, -1, -1 },
     { "UI_tripPlanning", 0x347, 8, 1, 159, 8, DBC_CKSUM_NONE, -1, -1 },
     { "UI_hvacRequest", 0x2F3, 5, 1, 167, 11, DBC_CKSUM_NONE, -1, -1 },
-    { "DI_systemStatus", 0x118, 8, 0, 178, 14, DBC_CKSUM_TESLA_BYTESUM, 178, 179 },
-    { "DAS_status2", 0x389, 8, 0, 192, 17, DBC_CKSUM_TESLA_BYTESUM, 208, 207 },
+    { "UI_powertrainControl", 0x334, 8, 1, 178, 13, DBC_CKSUM_TESLA_BYTESUM, 190, 189 },
+    { "DI_systemStatus", 0x118, 8, 0, 191, 14, DBC_CKSUM_TESLA_BYTESUM, 191, 192 },
+    { "DAS_status2", 0x389, 8, 0, 205, 17, DBC_CKSUM_TESLA_BYTESUM, 221, 220 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {
     0x129, 0x118, 0x257, 0x399, 0x389, 0x25D,
 };
 static const uint16_t hw_filter_bus1_ids[] = {
-    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405,
+    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x334, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405,
 };
 const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {
     { hw_filter_bus0_ids, 6 },
-    { hw_filter_bus1_ids, 18 },
+    { hw_filter_bus1_ids, 19 },
 };

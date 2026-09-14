@@ -34,6 +34,7 @@ idf_component_register(
         "automation/wiper_off.c"
         "automation/multi_finger.c"
         "automation/climate_keep.c"
+        "automation/sport_kickdown.c"
         "ble/ble_server.c"
         "ble/ble_ota.c"
         "ble/ble_appchan.c"

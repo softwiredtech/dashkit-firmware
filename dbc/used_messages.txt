@@ -29,6 +29,7 @@ UI_vehicleControl2    1 decode   # vehicle control: glovebox (RMW)
 UI_chargeRequest      1 decode   # vehicle control: charge port open/close (RMW)
 UI_tripPlanning       1 decode   # battery preheat: faked supercharger nav (raw RMW)
 UI_hvacRequest        1 decode   # rear AC fan toggle; also app: climate setpoint
+UI_powertrainControl  1 decode   # sport kick-down: UI_pedalMap (RMW)
 
 # ---- App-forwarded messages on the chassis bus (bus 0) ----
 SCCM_steeringAngleSensor  0 filter  # app: steering angle
