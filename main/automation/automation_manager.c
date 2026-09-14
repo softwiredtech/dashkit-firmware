@@ -15,12 +15,14 @@ extern automation_t wiper_off_automation;
 extern automation_t multi_finger_automation;
 extern automation_t battery_preheat_automation;
 extern automation_t climate_keep_automation;
+extern automation_t sport_kickdown_automation;
 
 static automation_t *const g_automations[] = {
     &wiper_off_automation,
     &multi_finger_automation,
     &battery_preheat_automation,
     &climate_keep_automation,
+    &sport_kickdown_automation,
 };
 static const int g_automation_count =
     (int)(sizeof(g_automations) / sizeof(g_automations[0]));

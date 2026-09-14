@@ -6955,11 +6955,11 @@ BO_ 79 UI_locationStatus: 8 CH
 BO_ 1011 UI_odo: 3 CH
  SG_ UI_odometer: 0|24@1+ (0.1,0) [0|0] "km" X
 
-BO_ 787 UI_powertrainControl: 8 VEH
+BO_ 820 UI_powertrainControl: 8 VEH
  SG_ UI_creepTorque: 34|1@1+ (1,0) [0|0] "" X
  SG_ UI_limitMode: 32|2@1+ (1,0) [0|0] "" X
  SG_ UI_motorOnMode: 35|2@1+ (1,0) [0|0] "" X
- SG_ UI_pedalMap: 5|1@1+ (1,0) [0|0] "" X
+ SG_ UI_pedalMap: 5|2@1+ (1,0) [0|0] "" X
  SG_ UI_powertrainControlChecksum: 56|8@1+ (1,0) [0|0] "" X
  SG_ UI_powertrainControlCounter: 52|4@1+ (1,0) [0|0] "" X
  SG_ UI_regenTorqueMax: 24|8@1+ (0.5,0) [0|0] "%" X
@@ -9805,8 +9805,8 @@ BA_ "GenMsgCycleTime" BO_ 79 1000;
 BA_ "GenMsgSendType" BO_ 1011 0;
 BA_ "GenMsgCycleTime" BO_ 1011 1000;
 
-BA_ "GenMsgSendType" BO_ 787 0;
-BA_ "GenMsgCycleTime" BO_ 787 500;
+BA_ "GenMsgSendType" BO_ 820 0;
+BA_ "GenMsgCycleTime" BO_ 820 500;
 
 BA_ "GenMsgSendType" BO_ 499 0;
 BA_ "GenMsgCycleTime" BO_ 499 1000;
@@ -11036,16 +11036,16 @@ VAL_ 79 UI_gpsAccuracy 127 "SNA";
 
 VAL_ 1011 UI_odometer 16777215 "SNA";
 
-VAL_ 787 UI_creepTorque 0 "OFF" 1 "ON";
-VAL_ 787 UI_limitMode 0 "NORMAL" 1 "VALET" 2 "FACTORY";
-VAL_ 787 UI_motorOnMode 0 "NORMAL" 1 "FRONT_ONLY" 2 "REAR_ONLY";
-VAL_ 787 UI_pedalMap 0 "CHILL" 1 "SPORT";
-VAL_ 787 UI_speedLimit 255 "SNA";
-VAL_ 787 UI_systemPowerLimit 31 "SNA";
-VAL_ 787 UI_systemTorqueLimit 63 "SNA";
-VAL_ 787 UI_trackModeRequest 0 "IDLE" 1 "ON" 2 "OFF";
-VAL_ 787 UI_wasteMode 0 "NONE" 1 "PARTIAL" 2 "FULL";
-VAL_ 787 UI_wasteModeRegenLimit 0 "MAX" 1 "30A" 2 "10A" 3 "0A";
+VAL_ 820 UI_creepTorque 0 "OFF" 1 "ON";
+VAL_ 820 UI_limitMode 0 "NORMAL" 1 "VALET" 2 "FACTORY";
+VAL_ 820 UI_motorOnMode 0 "NORMAL" 1 "FRONT_ONLY" 2 "REAR_ONLY";
+VAL_ 820 UI_pedalMap 0 "CHILL" 1 "SPORT" 2 "PERFORMANCE";
+VAL_ 820 UI_speedLimit 255 "SNA";
+VAL_ 820 UI_systemPowerLimit 31 "SNA";
+VAL_ 820 UI_systemTorqueLimit 63 "SNA";
+VAL_ 820 UI_trackModeRequest 0 "IDLE" 1 "ON" 2 "OFF";
+VAL_ 820 UI_wasteMode 0 "NONE" 1 "PARTIAL" 2 "FULL";
+VAL_ 820 UI_wasteModeRegenLimit 0 "MAX" 1 "30A" 2 "10A" 3 "0A";
 
 VAL_ 698 UI_radarTargetDx 255 "NO_OBJECT";
 VAL_ 698 UI_radarTargetDxEnd 255 "NO_OBJECT";
