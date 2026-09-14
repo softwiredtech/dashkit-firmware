@@ -1,6 +1,6 @@
 {
-  "version": "0.1.4",
-  "url": "https://firebasestorage.googleapis.com/v0/b/dashkit-connect.firebasestorage.app/o/dashkit%2Fdashkit-0.1.4.bin?alt=media&token=684a672c-53cd-48a4-a325-50e25b807b0b",
-  "sha256": "d00e1e39cfe778f0391d34aeb5f67bf0428b8d099193f20f0be604bdc2b6c534",
-  "notes": "OTA update 0.1.4."
+  "version": "0.2.0",
+  "url": "https://firebasestorage.googleapis.com/v0/b/dashkit-connect.firebasestorage.app/o/dashkit%2Fdashkit-0.2.0.bin?alt=media&token=684a672c-53cd-48a4-a325-50e25b807b0b",
+  "sha256": "9929eb468cae34ac9d30a2683925b677512a095cfa0921dcc530830e098a8a31",
+  "notes": "OTA update 0.2.0."
 }
