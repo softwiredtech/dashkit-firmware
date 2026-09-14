@@ -71,15 +71,10 @@ typedef enum {
     // car leaves reverse. value is ignored.
     VC_CMD_MIRROR_DIP_TOGGLE = 0x48,
 
-    // --- Sport kick-down automation (UI_powertrainControl 0x313) ---
-    // Config only (not a CAN frame): while the accelerator is past the
-    // threshold in Drive, RMW-inject UI_pedalMap=SPORT on the car's live
-    // frame; stops once the pedal drops back. 1=enable, 0=disable. NVS.
+    // --- Sport kick-down (UI_powertrainControl 0x334) ---
+    // Config only, persisted in NVS. 1=enable, 0=disable.
     VC_CMD_SPORT_KICKDOWN_ENABLE = 0x49,
-
-    // --- Sport kick-down threshold ---
-    // Config only: accelerator pedal percent that triggers the kick-down
-    // (clamped to 10..95). Persisted in NVS.
+    // Config only, persisted in NVS. Trigger pedal percent, clamped 10..95.
     VC_CMD_SPORT_KICKDOWN_THRESHOLD = 0x4A,
 } vehicle_control_opcode_t;
 

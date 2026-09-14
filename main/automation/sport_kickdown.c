@@ -1,8 +1,5 @@
-// Sport kick-down: while the accelerator is past the threshold in Drive,
-// RMW-inject UI_pedalMap=SPORT onto the car's live UI_powertrainControl
-// (0x334) so every other signal stays as the car emits it. Stops once the
-// pedal drops back below threshold-hysteresis, the car leaves Drive, or the
-// driver changes the pedal map from the UI.
+// Sport kick-down: RMW UI_pedalMap=SPORT onto the car's live frame while the
+// pedal is past the threshold in Drive.
 
 #include "automation.h"
 #include "dbc.h"
@@ -26,7 +23,7 @@ static const char *TAG = "sport_kd";
 
 #define PT_BUS         1
 #define PT_MSG         "UI_powertrainControl"
-#define PT_ID          0x334   // was 0x313 before Tesla FW 2026.x
+#define PT_ID          0x334   // 0x313 before Tesla FW 2026.x
 #define PT_SIG         "UI_pedalMap"
 
 #define MAP_CHILL      0
@@ -37,8 +34,8 @@ static const char *TAG = "sport_kd";
 #define THRESHOLD_MAX_PCT      95
 #define RELEASE_HYST_PCT       10
 
-#define INJECT_MS      10   // car's 0x334 is ~500ms; keep its CHILL frames from landing
-#define TX_LOG_EVERY   200  // ~2s at 10ms
+#define INJECT_MS      10   // car sends every ~500ms
+#define TX_LOG_EVERY   200
 
 #define NVS_NAMESPACE     "sport_kd"
 #define NVS_KEY_ENABLED   "en"
@@ -47,9 +44,9 @@ static const char *TAG = "sport_kd";
 static volatile bool    s_enabled = false;
 static volatile uint8_t s_threshold_pct = THRESHOLD_DEFAULT_PCT;
 
-static volatile bool s_above = false;   // pedal latch with hysteresis
+static volatile bool s_above = false;
 static volatile bool s_active = false;
-static volatile int  s_baseline = -1;   // car's UI_pedalMap when injection started
+static volatile int  s_baseline = -1;
 
 static void inject_task(void *arg);
 
@@ -173,9 +170,7 @@ static void on_pedal_frame(void)
     }
 }
 
-// Log the car's 0x334 whenever its payload changes on a bus, ignoring the
-// rolling counter (byte 6 high nibble) and checksum (byte 7). Decodes the frame
-// in hand: the value cache only holds the copy from the message's own bus.
+// Decodes the frame itself: the value cache only holds the bus-1 copy.
 static void log_pt_change(uint8_t bus, const can_frame_t *f)
 {
     static uint8_t last[2][7];
