@@ -76,6 +76,10 @@ typedef enum {
     VC_CMD_SPORT_KICKDOWN_ENABLE = 0x49,
     // Config only, persisted in NVS. Trigger pedal percent, clamped 10..95.
     VC_CMD_SPORT_KICKDOWN_THRESHOLD = 0x4A,
+
+    // --- AC swing (UI_ventPanelControlRequest 0x253) ---
+    // Config only, persisted in NVS. 1=enable, 0=disable.
+    VC_CMD_AC_SWING_ENABLE = 0x4B,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.
