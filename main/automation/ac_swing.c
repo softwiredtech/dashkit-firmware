@@ -12,7 +12,6 @@
 #include "freertos/task.h"
 #include "nvs.h"
 
-#include <string.h>
 
 static const char *TAG = "ac_swing";
 
@@ -20,10 +19,7 @@ static const char *TAG = "ac_swing";
 #define VENT_MSG      "UI_ventPanelControlRequest"
 #define VENT_ID       0x253
 #define VENT_MUX_POS  0
-#define VENT_POS_OFF  1      // bytes 1..6: left X/Y/split, right X/Y/split
-#define VENT_POS_LEN  6
-#define SIG_LEFT_X    "UI_ventPanelLeftPositionX"
-#define SIG_RIGHT_X   "UI_ventPanelRightPositionX"
+#define SIG_MUX       "UI_ventPanelMultiplex"
 
 #define X_MIN_RAW     0
 #define X_MAX_RAW     200
@@ -38,6 +34,14 @@ static const char *TAG = "ac_swing";
 
 enum { SIDE_DRIVER, SIDE_PASSENGER, SIDE_BOTH, SIDE_COUNT };
 enum { INTENSITY_LOW, INTENSITY_MEDIUM, INTENSITY_FULL, INTENSITY_COUNT };
+
+static const char *const VENT_SIGS[] = {
+    "UI_ventPanelLeftPositionX", "UI_ventPanelLeftPositionY", "UI_ventPanelLeftLateralSplit",
+    "UI_ventPanelRightPositionX", "UI_ventPanelRightPositionY", "UI_ventPanelRightLateralSplit",
+};
+#define VENT_SIG_COUNT (sizeof(VENT_SIGS) / sizeof(VENT_SIGS[0]))
+#define LEFT_X  0
+#define RIGHT_X 3
 
 static const uint8_t LOW_STEPS[]    = { 50, 100, 150 };
 #define LOW_DWELL_MS    4000
@@ -55,8 +59,9 @@ static portMUX_TYPE s_base_lock = portMUX_INITIALIZER_UNLOCKED;
 static can_frame_t  s_base;
 static bool         s_have_base;
 static int64_t      s_base_us;
-static dbc_sig_t    s_sig_left_x;
-static dbc_sig_t    s_sig_right_x;
+static bool         s_ready;
+static dbc_sig_t    s_sig_mux;
+static dbc_sig_t    s_vent_sigs[VENT_SIG_COUNT];
 
 static void inject_task(void *arg);
 
@@ -108,8 +113,17 @@ static void ac_swing_init(automation_t *self)
     (void)self;
     load_config();
     dbc_msg_t msg = dbc_msg(VENT_MSG);
-    s_sig_left_x = dbc_sig(msg, SIG_LEFT_X);
-    s_sig_right_x = dbc_sig(msg, SIG_RIGHT_X);
+    s_sig_mux = dbc_sig(msg, SIG_MUX);
+    bool resolved = s_sig_mux != DBC_SIG_INVALID;
+    for (size_t i = 0; i < VENT_SIG_COUNT; i++) {
+        s_vent_sigs[i] = dbc_sig(msg, VENT_SIGS[i]);
+        resolved = resolved && s_vent_sigs[i] != DBC_SIG_INVALID;
+    }
+    if (!resolved) {
+        ESP_LOGE(TAG, "vent signals missing from the DBC, AC swing disabled");
+        return;
+    }
+    s_ready = true;
     xTaskCreatePinnedToCore(inject_task, "ac_swing_inj", 4096, NULL, 5, NULL, 0);
     ESP_LOGI(TAG, "AC swing READY (%s), side %u, intensity %u",
              s_enabled ? "ENABLED" : "disabled", s_side, s_intensity);
@@ -118,15 +132,17 @@ static void ac_swing_init(automation_t *self)
 static void ac_swing_on_frame(automation_t *self, const can_tagged_frame_t *frame)
 {
     (void)self;
-    if (frame->bus_id != VENT_BUS || frame->frame.id != VENT_ID
-        || frame->frame.data[0] != VENT_MUX_POS) {
+    if (!s_ready || frame->bus_id != VENT_BUS || frame->frame.id != VENT_ID
+        || dbc_unpack(frame->frame.data, s_sig_mux) != VENT_MUX_POS) {
         return;
     }
     int64_t now = esp_timer_get_time();
     bool moved = false;
     portENTER_CRITICAL(&s_base_lock);
     if (s_have_base && now - s_base_us < BASE_STALE_US) {
-        moved = memcmp(&s_base.data[VENT_POS_OFF], &frame->frame.data[VENT_POS_OFF], VENT_POS_LEN) != 0;
+        for (size_t i = 0; i < VENT_SIG_COUNT && !moved; i++) {
+            moved = dbc_unpack(s_base.data, s_vent_sigs[i]) != dbc_unpack(frame->frame.data, s_vent_sigs[i]);
+        }
     }
     s_base = frame->frame;
     s_have_base = true;
@@ -207,10 +223,10 @@ static void inject_task(void *arg)
             set_active(true, "enabled, live vent frame", now);
             uint8_t x = swing_x(now - s_start_us);
             if (s_side != SIDE_PASSENGER) {
-                dbc_pack(f.data, s_sig_left_x, x);
+                dbc_pack(f.data, s_vent_sigs[LEFT_X], x);
             }
             if (s_side != SIDE_DRIVER) {
-                dbc_pack(f.data, s_sig_right_x, x);
+                dbc_pack(f.data, s_vent_sigs[RIGHT_X], x);
             }
             can_frame_send(VENT_BUS, VENT_MSG, &f);
         }
