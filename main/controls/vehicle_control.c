@@ -80,7 +80,9 @@ static bool is_config_opcode(uint8_t opcode)
            opcode == VC_CMD_CLIMATE_KEEP_DURATION ||
            opcode == VC_CMD_SPORT_KICKDOWN_ENABLE ||
            opcode == VC_CMD_SPORT_KICKDOWN_THRESHOLD ||
-           opcode == VC_CMD_AC_SWING_ENABLE;
+           opcode == VC_CMD_AC_SWING_ENABLE ||
+           opcode == VC_CMD_AC_SWING_SIDE ||
+           opcode == VC_CMD_AC_SWING_INTENSITY;
 }
 
 static const vc_command_t *find_command(uint8_t opcode)

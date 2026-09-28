@@ -80,6 +80,10 @@ typedef enum {
     // --- AC swing (UI_ventPanelControlRequest 0x253) ---
     // Config only, persisted in NVS. 1=enable, 0=disable.
     VC_CMD_AC_SWING_ENABLE = 0x4B,
+    // Config only, persisted in NVS. 0=driver, 1=passenger, 2=both.
+    VC_CMD_AC_SWING_SIDE = 0x4C,
+    // Config only, persisted in NVS. 0=low (3 positions), 1=medium (6 steps), 2=full sweep.
+    VC_CMD_AC_SWING_INTENSITY = 0x4D,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.
