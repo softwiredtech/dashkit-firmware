@@ -430,11 +430,11 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         // Bonded peers get their CCCD restored at encryption time.
         update_active();
 
-        // 1M, not 2M: on 2M the phone's controller dropped the encrypted
-        // stream every ~10 min with a MIC failure (Android status 61). 1M has
-        // better sensitivity and the CAN stream needs a fraction of its rate.
-        ble_gap_set_prefered_le_phy(ch, BLE_GAP_LE_PHY_1M_MASK,
-                                    BLE_GAP_LE_PHY_1M_MASK,
+        // Allow 1M and 2M; the phone picks. Android pins 1M (2M caused MIC
+        // failures, status 61); iOS moves to 2M.
+        ble_gap_set_prefered_le_phy(ch,
+                                    BLE_GAP_LE_PHY_1M_MASK | BLE_GAP_LE_PHY_2M_MASK,
+                                    BLE_GAP_LE_PHY_1M_MASK | BLE_GAP_LE_PHY_2M_MASK,
                                     BLE_GAP_LE_PHY_CODED_ANY);
         break;
     }
