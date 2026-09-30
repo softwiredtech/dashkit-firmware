@@ -29,7 +29,7 @@ typedef enum {
     // finger count (3..5) in the high byte and the action in the low byte:
     //   value = (fingers << 8) | multi_finger_action_t
     // action: 0=none 1=glovebox 2=preheat 3=mirror_fold 4=frunk 5=trunk
-    //         6=charge_port 7=rear_fan 8=mirror_dip.
+    //         6=charge_port 7=rear_fan 8=mirror_dip 9=ac_swing.
     VC_CMD_MULTI_FINGER_ACTION = 0x40,
 
     // --- Auto wiper-off automation toggle ---
@@ -78,12 +78,13 @@ typedef enum {
     VC_CMD_SPORT_KICKDOWN_THRESHOLD = 0x4A,
 
     // --- AC swing (UI_ventPanelControlRequest 0x253) ---
-    // Config only, persisted in NVS. 1=enable, 0=disable.
-    VC_CMD_AC_SWING_ENABLE = 0x4B,
+    // 0x4B retired (persisted enable), don't reuse.
     // Config only, persisted in NVS. 0=driver, 1=passenger, 2=both.
     VC_CMD_AC_SWING_SIDE = 0x4C,
     // Config only, persisted in NVS. 0=low (3 positions), 1=medium (6 steps), 2=full sweep.
     VC_CMD_AC_SWING_INTENSITY = 0x4D,
+    // Config only, not persisted. value is ignored.
+    VC_CMD_AC_SWING_TOGGLE = 0x4E,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.

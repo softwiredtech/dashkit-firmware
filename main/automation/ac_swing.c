@@ -1,6 +1,7 @@
 // AC swing: RMW of the car's live UI_ventPanelControlRequest mux-0 frame.
 // Left vent = driver (no RHD handling). Injected frames don't come back on RX,
 // so a change in the car's own frame while swinging is the user moving a vent.
+// On/off is never persisted: swing only starts on an explicit toggle.
 
 #include "automation.h"
 #include "dbc.h"
@@ -26,9 +27,17 @@ static const char *TAG = "ac_swing";
 #define SWEEP_MS      8000   // full intensity, one direction
 #define INJECT_MS     40     // car idles at 2Hz
 #define BASE_STALE_US (5 * 1000 * 1000)
+#define MAX_ON_US     (30LL * 60 * 1000 * 1000)
+
+#define PRESENCE_MSG  "UI_vehicleControl2"
+#define PRESENCE_SIG  "UI_userPresent"
+#define PRESENCE_ID   0x3B3
+#define HVAC_MSG      "UI_hvacRequest"
+#define HVAC_POWER    "UI_hvacReqUserPowerState"
+#define HVAC_ID       0x2F3
+#define HVAC_POWER_ON 1
 
 #define NVS_NAMESPACE     "ac_swing"
-#define NVS_KEY_ENABLED   "en"
 #define NVS_KEY_SIDE      "side"
 #define NVS_KEY_INTENSITY "int"
 
@@ -48,10 +57,10 @@ static const uint8_t LOW_STEPS[]    = { 50, 100, 150 };
 static const uint8_t MEDIUM_STEPS[] = { 20, 52, 84, 116, 148, 180 };
 #define MEDIUM_DWELL_MS 2000
 
-static volatile bool    s_enabled = false;
+static volatile bool    s_on;
+static volatile int64_t s_on_since_us;
 static volatile uint8_t s_side = SIDE_DRIVER;
 static volatile uint8_t s_intensity = INTENSITY_FULL;
-static volatile bool    s_overridden;
 static volatile bool    s_active;
 static int64_t          s_start_us;
 
@@ -73,10 +82,7 @@ static void save_config(void)
         ESP_LOGW(TAG, "nvs_open failed: %s", esp_err_to_name(err));
         return;
     }
-    err = nvs_set_u8(nvs, NVS_KEY_ENABLED, s_enabled ? 1 : 0);
-    if (err == ESP_OK) {
-        err = nvs_set_u8(nvs, NVS_KEY_SIDE, s_side);
-    }
+    err = nvs_set_u8(nvs, NVS_KEY_SIDE, s_side);
     if (err == ESP_OK) {
         err = nvs_set_u8(nvs, NVS_KEY_INTENSITY, s_intensity);
     }
@@ -96,9 +102,6 @@ static void load_config(void)
         return;
     }
     uint8_t v = 0;
-    if (nvs_get_u8(nvs, NVS_KEY_ENABLED, &v) == ESP_OK) {
-        s_enabled = (v != 0);
-    }
     if (nvs_get_u8(nvs, NVS_KEY_SIDE, &v) == ESP_OK && v < SIDE_COUNT) {
         s_side = v;
     }
@@ -125,15 +128,72 @@ static void ac_swing_init(automation_t *self)
     }
     s_ready = true;
     xTaskCreatePinnedToCore(inject_task, "ac_swing_inj", 4096, NULL, 5, NULL, 0);
-    ESP_LOGI(TAG, "AC swing READY (%s), side %u, intensity %u",
-             s_enabled ? "ENABLED" : "disabled", s_side, s_intensity);
+    ESP_LOGI(TAG, "AC swing READY, side %u, intensity %u", s_side, s_intensity);
+}
+
+static void turn_off(const char *why)
+{
+    if (s_on) {
+        s_on = false;
+        ESP_LOGW(TAG, "OFF (%s)", why);
+    }
+}
+
+static bool signal_is(const char *msg, const char *sig, int expected)
+{
+    double v;
+    return can_get(VENT_BUS, msg, sig, &v, false) == ESP_OK && (int)v == expected;
+}
+
+static bool base_fresh(void)
+{
+    int64_t now = esp_timer_get_time();
+    portENTER_CRITICAL(&s_base_lock);
+    bool fresh = s_have_base && now - s_base_us < BASE_STALE_US;
+    portEXIT_CRITICAL(&s_base_lock);
+    return fresh;
+}
+
+static void toggle(void)
+{
+    if (s_on) {
+        turn_off("toggled");
+        return;
+    }
+    const char *refuse = NULL;
+    if (!s_ready) {
+        refuse = "not ready";
+    } else if (!signal_is(PRESENCE_MSG, PRESENCE_SIG, 1)) {
+        refuse = "driver not present";
+    } else if (!signal_is(HVAC_MSG, HVAC_POWER, HVAC_POWER_ON)) {
+        refuse = "climate off";
+    } else if (!base_fresh()) {
+        refuse = "no fresh vent frame";
+    }
+    if (refuse) {
+        ESP_LOGW(TAG, "toggle ignored: %s", refuse);
+        return;
+    }
+    s_on_since_us = esp_timer_get_time();
+    s_on = true;
+    ESP_LOGW(TAG, "ON");
 }
 
 static void ac_swing_on_frame(automation_t *self, const can_tagged_frame_t *frame)
 {
     (void)self;
-    if (!s_ready || frame->bus_id != VENT_BUS || frame->frame.id != VENT_ID
-        || dbc_unpack(frame->frame.data, s_sig_mux) != VENT_MUX_POS) {
+    if (!s_ready || frame->bus_id != VENT_BUS) {
+        return;
+    }
+    if (s_on && frame->frame.id == PRESENCE_ID && signal_is(PRESENCE_MSG, PRESENCE_SIG, 0)) {
+        turn_off("driver left");
+        return;
+    }
+    if (s_on && frame->frame.id == HVAC_ID && !signal_is(HVAC_MSG, HVAC_POWER, HVAC_POWER_ON)) {
+        turn_off("climate off");
+        return;
+    }
+    if (frame->frame.id != VENT_ID || dbc_unpack(frame->frame.data, s_sig_mux) != VENT_MUX_POS) {
         return;
     }
     int64_t now = esp_timer_get_time();
@@ -149,9 +209,8 @@ static void ac_swing_on_frame(automation_t *self, const can_tagged_frame_t *fram
     s_base_us = now;
     portEXIT_CRITICAL(&s_base_lock);
 
-    if (moved && s_active && !s_overridden) {
-        s_overridden = true;
-        ESP_LOGW(TAG, "vent moved on the screen, pausing swing");
+    if (moved && s_active) {
+        turn_off("vent moved on the screen");
     }
 }
 
@@ -200,10 +259,11 @@ static void inject_task(void *arg)
         can_frame_t f;
         int64_t now = esp_timer_get_time();
 
-        if (!s_enabled) {
-            why = "disabled";
-        } else if (s_overridden) {
-            why = "user moved a vent";
+        if (s_on && now - s_on_since_us >= MAX_ON_US) {
+            turn_off("max duration reached");
+        }
+        if (!s_on) {
+            why = "off";
         } else {
             bool fresh = false;
             portENTER_CRITICAL(&s_base_lock);
@@ -220,7 +280,7 @@ static void inject_task(void *arg)
         if (why) {
             set_active(false, why, now);
         } else {
-            set_active(true, "enabled, live vent frame", now);
+            set_active(true, "on, live vent frame", now);
             uint8_t x = swing_x(now - s_start_us);
             if (s_side != SIDE_PASSENGER) {
                 dbc_pack(f.data, s_vent_sigs[LEFT_X], x);
@@ -234,18 +294,14 @@ static void inject_task(void *arg)
     }
 }
 
-// Only a real change re-arms a paused swing, not the same values re-sent on reconnect.
 static void ac_swing_on_config(automation_t *self, uint8_t opcode, uint16_t value)
 {
     (void)self;
-    if (opcode == VC_CMD_AC_SWING_ENABLE) {
-        bool enabled = (value != 0);
-        if (enabled == s_enabled) {
-            return;
-        }
-        ESP_LOGW(TAG, "automation %s", enabled ? "ENABLED" : "disabled");
-        s_enabled = enabled;
-    } else if (opcode == VC_CMD_AC_SWING_SIDE) {
+    if (opcode == VC_CMD_AC_SWING_TOGGLE) {
+        toggle();
+        return;
+    }
+    if (opcode == VC_CMD_AC_SWING_SIDE) {
         uint8_t side = value < SIDE_COUNT ? (uint8_t)value : SIDE_DRIVER;
         if (side == s_side) {
             return;
@@ -262,7 +318,6 @@ static void ac_swing_on_config(automation_t *self, uint8_t opcode, uint16_t valu
     } else {
         return;
     }
-    s_overridden = false;
     save_config();
 }
 
