@@ -82,6 +82,7 @@ typedef struct {
     bool     subscribed;
     bool     peer_was_bonded;  // peer had a stored bond at CONNECT
     bool     ping_seen;
+    bool     pending_connect;  // opened by PAIRING_COMPLETE before CONNECT
     uint32_t last_ping_s;      // seconds: 32-bit access is atomic on Xtensa
     uint32_t connected_s;
     uint32_t sub_seq;          // global order of the last subscribe, 0 = never
@@ -174,6 +175,21 @@ static conn_slot_t *slot_alloc(void)
         }
     }
     return NULL;
+}
+
+static void slot_open(conn_slot_t *slot, uint16_t handle)
+{
+    struct ble_gap_conn_desc desc;
+    slot->handle = handle;
+    slot->encrypted = false;
+    slot->subscribed = false;
+    slot->peer_was_bonded = ble_gap_conn_find(handle, &desc) == 0
+                         && peer_is_bonded(&desc.peer_id_addr);
+    slot->ping_seen = false;
+    slot->pending_connect = false;
+    slot->last_ping_s = 0;
+    slot->connected_s = now_s();
+    slot->sub_seq = 0;
 }
 
 static int conn_count(void)
@@ -296,30 +312,26 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             start_advertising();
             break;
         }
-        conn_slot_t *slot = slot_alloc();
-        if (!slot) {
-            // Should not happen: advertising stops while every slot is taken.
-            ESP_LOGW(TAG, "All %d slots taken; dropping handle %d",
-                     MAX_CONNS, event->connect.conn_handle);
-            ble_gap_terminate(event->connect.conn_handle,
-                              BLE_ERR_REM_USER_CONN_TERM);
-            break;
+        uint16_t ch = event->connect.conn_handle;
+        conn_slot_t *slot = slot_by_handle(ch);
+        if (slot && slot->pending_connect) {
+            slot->pending_connect = false;
+        } else {
+            if (!slot) {
+                slot = slot_alloc();
+            }
+            if (!slot) {
+                // Should not happen: advertising stops while every slot is taken.
+                ESP_LOGW(TAG, "All %d slots taken; dropping handle %d",
+                         MAX_CONNS, ch);
+                ble_gap_terminate(ch, BLE_ERR_REM_USER_CONN_TERM);
+                break;
+            }
+            slot_open(slot, ch);
         }
-
-        struct ble_gap_conn_desc desc;
-        bool bonded = ble_gap_conn_find(event->connect.conn_handle, &desc) == 0
-                   && peer_is_bonded(&desc.peer_id_addr);
-
-        slot->handle = event->connect.conn_handle;
-        slot->encrypted = false;
-        slot->subscribed = false;
-        slot->peer_was_bonded = bonded;
-        slot->ping_seen = false;
-        slot->last_ping_s = 0;
-        slot->connected_s = now_s();
-        slot->sub_seq = 0;
-        ESP_LOGI(TAG, "Connected (handle=%d, peer_bonded=%d, bonds=%d, conns=%d/%d)",
-                 slot->handle, bonded, bond_count(), conn_count(), MAX_CONNS);
+        ESP_LOGI(TAG, "Connected (handle=%d, peer_bonded=%d, enc=%d, sub=%d, bonds=%d, conns=%d/%d)",
+                 slot->handle, slot->peer_was_bonded, slot->encrypted,
+                 slot->subscribed, bond_count(), conn_count(), MAX_CONNS);
         ble_att_set_preferred_mtu(512);
         ble_gattc_exchange_mtu(slot->handle, NULL, NULL);
         // Keep advertising while slots remain.
@@ -382,6 +394,26 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "PHY updated: TX=%sM, RX=%sM",
                  tx_phy == BLE_GAP_LE_PHY_2M ? "2" : "1",
                  rx_phy == BLE_GAP_LE_PHY_2M ? "2" : "1");
+        break;
+    }
+
+    case BLE_GAP_EVENT_PARING_COMPLETE: {
+        // NimBLE delivers a peripheral's CONNECT only after the remote
+        // version/feature reads; an iPhone re-encrypts (and gets its CCCD
+        // restored) before that. Open the slot here: this event precedes key
+        // persistence, so peer_was_bonded still reflects the pre-pairing state.
+        uint16_t ch = event->pairing_complete.conn_handle;
+        if (event->pairing_complete.status != 0 || slot_by_handle(ch)) {
+            break;
+        }
+        conn_slot_t *slot = slot_alloc();
+        if (!slot) {
+            break;
+        }
+        slot_open(slot, ch);
+        slot->pending_connect = true;
+        ESP_LOGI(TAG, "Slot opened before CONNECT (handle=%d, peer_bonded=%d)",
+                 ch, slot->peer_was_bonded);
         break;
     }
 
