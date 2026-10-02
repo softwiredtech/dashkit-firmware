@@ -1,5 +1,6 @@
-// AC swing: RMW of the car's live UI_ventPanelControlRequest mux-0 frame.
-// Left vent = driver (no RHD handling). Injected frames don't come back on RX,
+// AC swing: RMW of the car's live UI_ventPanelControlRequest mux-0 frame,
+// forcing the native lateral mode to SWING (Juniper). Left vent = driver (no
+// RHD handling). Intensity is stored but the car swings at its own rate. Injected frames don't come back on RX,
 // so a change in the car's own frame while swinging is the user moving a vent.
 // On/off is never persisted: swing only starts on an explicit toggle.
 
@@ -16,15 +17,15 @@
 
 static const char *TAG = "ac_swing";
 
-#define VENT_BUS      1
+#define VENT_BUS      0   // chassis-only on Juniper
 #define VENT_MSG      "UI_ventPanelControlRequest"
 #define VENT_ID       0x253
 #define VENT_MUX_POS  0
-#define SIG_MUX       "UI_ventPanelMultiplex"
+#define SIG_MUX       "UI_ventPanelControlRequestIndex"
+#define SIG_LEFT_MODE  "UI_ventPanelLeftLateralMode"
+#define SIG_RIGHT_MODE "UI_ventPanelRightLateralMode"
+#define LATERAL_SWING  2
 
-#define X_MIN_RAW     0
-#define X_MAX_RAW     200
-#define SWEEP_MS      8000   // full intensity, one direction
 #define INJECT_MS     40     // car idles at 2Hz
 #define BASE_STALE_US (5 * 1000 * 1000)
 #define MAX_ON_US     (30LL * 60 * 1000 * 1000)
@@ -47,15 +48,11 @@ enum { INTENSITY_LOW, INTENSITY_MEDIUM, INTENSITY_FULL, INTENSITY_COUNT };
 static const char *const VENT_SIGS[] = {
     "UI_ventPanelLeftPositionX", "UI_ventPanelLeftPositionY", "UI_ventPanelLeftLateralSplit",
     "UI_ventPanelRightPositionX", "UI_ventPanelRightPositionY", "UI_ventPanelRightLateralSplit",
+    SIG_LEFT_MODE, SIG_RIGHT_MODE,
 };
 #define VENT_SIG_COUNT (sizeof(VENT_SIGS) / sizeof(VENT_SIGS[0]))
-#define LEFT_X  0
-#define RIGHT_X 3
-
-static const uint8_t LOW_STEPS[]    = { 50, 100, 150 };
-#define LOW_DWELL_MS    4000
-static const uint8_t MEDIUM_STEPS[] = { 20, 52, 84, 116, 148, 180 };
-#define MEDIUM_DWELL_MS 2000
+#define LEFT_MODE  6
+#define RIGHT_MODE 7
 
 static volatile bool    s_on;
 static volatile int64_t s_on_since_us;
@@ -214,31 +211,6 @@ static void ac_swing_on_frame(automation_t *self, const can_tagged_frame_t *fram
     }
 }
 
-static uint8_t stepped_x(const uint8_t *steps, int count, int dwell_ms, int64_t elapsed_ms)
-{
-    int cycle = 2 * count - 2;
-    int i = (int)((elapsed_ms / dwell_ms) % cycle);
-    return steps[i < count ? i : cycle - i];
-}
-
-static uint8_t swing_x(int64_t elapsed_us)
-{
-    int64_t ms = elapsed_us / 1000;
-    switch (s_intensity) {
-    case INTENSITY_LOW:
-        return stepped_x(LOW_STEPS, sizeof(LOW_STEPS), LOW_DWELL_MS, ms);
-    case INTENSITY_MEDIUM:
-        return stepped_x(MEDIUM_STEPS, sizeof(MEDIUM_STEPS), MEDIUM_DWELL_MS, ms);
-    default: {
-        int64_t t = ms % (2 * SWEEP_MS);
-        if (t >= SWEEP_MS) {
-            t = 2 * SWEEP_MS - t;
-        }
-        return (uint8_t)(X_MIN_RAW + (X_MAX_RAW - X_MIN_RAW) * t / SWEEP_MS);
-    }
-    }
-}
-
 static void set_active(bool active, const char *why, int64_t now)
 {
     if (active == s_active) {
@@ -281,12 +253,11 @@ static void inject_task(void *arg)
             set_active(false, why, now);
         } else {
             set_active(true, "on, live vent frame", now);
-            uint8_t x = swing_x(now - s_start_us);
             if (s_side != SIDE_PASSENGER) {
-                dbc_pack(f.data, s_vent_sigs[LEFT_X], x);
+                dbc_pack(f.data, s_vent_sigs[LEFT_MODE], LATERAL_SWING);
             }
             if (s_side != SIDE_DRIVER) {
-                dbc_pack(f.data, s_vent_sigs[RIGHT_X], x);
+                dbc_pack(f.data, s_vent_sigs[RIGHT_MODE], LATERAL_SWING);
             }
             can_frame_send(VENT_BUS, VENT_MSG, &f);
         }

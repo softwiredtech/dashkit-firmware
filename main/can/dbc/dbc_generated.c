@@ -3,12 +3,12 @@
 
 const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     // ---- SCCM_leftStalk (0x249) ----
-    { "SCCM_leftStalkChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
+    { "SCCM_leftStalkCrc", 0, 8, 0, 1.0, 0.0, -1, -1 },
     { "SCCM_leftStalkCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
     { "SCCM_highBeamStalkStatus", 12, 2, 0, 1.0, 0.0, -1, -1 },
     { "SCCM_washWipeButtonStatus", 14, 2, 0, 1.0, 0.0, -1, -1 },
     { "SCCM_turnIndicatorStalkStatus", 16, 4, 0, 1.0, 0.0, -1, -1 },
-    { "SCCM_leftStalkReserved1", 20, 4, 0, 1.0, 0.0, -1, -1 },
+    { "SCCM_turnIndicatorStalkAngle", 20, 12, 0, 1.0, 0.0, -1, -1 },
     // ---- VCLEFT_switchStatus (0x3C2) ----
     { "VCLEFT_switchStatusIndex", 0, 2, 0, 1.0, 0.0, -1, -1 },
     { "VCLEFT_hornSwitchPressed", 2, 1, 0, 1.0, 0.0, 6, 0 },
@@ -30,6 +30,7 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "VCLEFT_frontSeatLiftUp", 18, 2, 0, 1.0, 0.0, 6, 0 },
     { "VCLEFT_frontSeatBackrestBack", 20, 2, 0, 1.0, 0.0, 6, 0 },
     { "VCLEFT_frontSeatBackrestForward", 22, 2, 0, 1.0, 0.0, 6, 0 },
+    { "VCLEFT_swcWiperButtonState", 22, 2, 0, 1.0, 0.0, 6, 1 },
     { "VCLEFT_frontSeatLumbarDown", 24, 2, 0, 1.0, 0.0, 6, 0 },
     { "VCLEFT_swcRightScrollTicks", 24, 6, 1, 1.0, 0.0, 6, 1 },
     { "VCLEFT_frontSeatLumbarUp", 26, 2, 0, 1.0, 0.0, 6, 0 },
@@ -168,6 +169,7 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_chargeEnableRequest", 2, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_acChargeCurrentLimit", 8, 7, 0, 1.0, 0.0, -1, -1 },
     { "UI_chargeTerminationPct", 16, 10, 0, 0.1, 0.0, -1, -1 },
+    { "UI_cpInletHeaterRequest", 36, 2, 0, 1.0, 0.0, -1, -1 },
     // ---- UI_tripPlanning (0x347) ----
     { "UI_tripPlanningActive", 0, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_navToSupercharger", 1, 1, 0, 1.0, 0.0, -1, -1 },
@@ -176,9 +178,12 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_requestBatteryHeating", 7, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_someValueA", 8, 8, 0, 1.0, 0.0, -1, -1 },
     { "UI_someValueB", 16, 8, 0, 1.0, 0.0, -1, -1 },
-    { "UI_someValueC", 24, 8, 0, 1.0, 0.0, -1, -1 },
+    { "UI_someValueC", 24, 8, 1, 1.0, 0.0, -1, -1 },
+    { "UI_tripPlanChargingTargetPercent", 32, 10, 0, 1.0, 0.0, -1, -1 },
+    { "UI_energyAtDestination", 48, 16, 1, 0.01, 0.0, -1, -1 },
     // ---- UI_hvacRequest (0x2F3) ----
     { "UI_hvacReqTempSetpointLeft", 0, 5, 0, 0.5, 15.0, -1, -1 },
+    { "UI_hvacReqAutoBlowerLevel", 5, 3, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacReqTempSetpointRight", 8, 5, 0, 0.5, 15.0, -1, -1 },
     { "UI_hvacReqAirDistributionMode", 13, 3, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacReqBlowerSegment", 16, 4, 0, 1.0, 0.0, -1, -1 },
@@ -189,6 +194,7 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_hvacReqSecondRowState", 29, 3, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacUseModeledDuctTemp", 32, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_hvacReqKeepClimateOn", 33, 2, 0, 1.0, 0.0, -1, -1 },
+    { "UI_hvacClimateNudgeStatus", 58, 3, 0, 1.0, 0.0, -1, -1 },
     // ---- UI_powertrainControl (0x334) ----
     { "UI_systemPowerLimit", 0, 5, 0, 20.0, 20.0, -1, -1 },
     { "UI_pedalMap", 5, 2, 0, 1.0, 0.0, -1, -1 },
@@ -204,13 +210,19 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_powertrainControlCounter", 52, 4, 0, 1.0, 0.0, -1, -1 },
     { "UI_powertrainControlChecksum", 56, 8, 0, 1.0, 0.0, -1, -1 },
     // ---- UI_ventPanelControlRequest (0x253) ----
-    { "UI_ventPanelMultiplex", 0, 8, 0, 1.0, 0.0, -1, -1 },
-    { "UI_ventPanelLeftPositionX", 8, 8, 0, 0.5, 0.0, -1, -1 },
-    { "UI_ventPanelLeftPositionY", 16, 8, 0, 0.5, 0.0, -1, -1 },
-    { "UI_ventPanelLeftLateralSplit", 24, 8, 0, 0.5, 0.0, -1, -1 },
-    { "UI_ventPanelRightPositionX", 32, 8, 0, 0.5, 0.0, -1, -1 },
-    { "UI_ventPanelRightPositionY", 40, 8, 0, 0.5, 0.0, -1, -1 },
-    { "UI_ventPanelRightLateralSplit", 48, 8, 0, 0.5, 0.0, -1, -1 },
+    { "UI_ventPanelControlRequestIndex", 0, 8, 0, 1.0, 0.0, -1, -1 },
+    { "UI_ventPanelLeftPositionX", 8, 8, 0, 0.5, 0.0, 197, 0 },
+    { "UI_vent2RLeftPositionX", 8, 8, 0, 0.5, 0.0, 197, 1 },
+    { "UI_ventPanelLeftPositionY", 16, 8, 0, 0.5, 0.0, 197, 0 },
+    { "UI_vent2RLeftPositionY", 16, 8, 0, 0.5, 0.0, 197, 1 },
+    { "UI_ventPanelLeftLateralSplit", 24, 8, 0, 0.5, 0.0, 197, 0 },
+    { "UI_vent2RRightPositionX", 24, 8, 0, 0.5, 0.0, 197, 1 },
+    { "UI_ventPanelRightPositionX", 32, 8, 0, 0.5, 0.0, 197, 0 },
+    { "UI_vent2RRightPositionY", 32, 8, 0, 0.5, 0.0, 197, 1 },
+    { "UI_ventPanelRightPositionY", 40, 8, 0, 0.5, 0.0, 197, 0 },
+    { "UI_ventPanelRightLateralSplit", 48, 8, 0, 0.5, 0.0, 197, 0 },
+    { "UI_ventPanelLeftLateralMode", 56, 2, 0, 1.0, 0.0, 197, 0 },
+    { "UI_ventPanelRightLateralMode", 58, 2, 0, 1.0, 0.0, 197, 0 },
     // ---- DI_systemStatus (0x118) ----
     { "DI_systemStatusChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
     { "DI_systemStatusCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
@@ -247,28 +259,28 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
 };
 
 const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
-    { "SCCM_leftStalk", 0x249, 3, 1, 0, 6, DBC_CKSUM_TESLA_BYTESUM, 0, 1 },
-    { "VCLEFT_switchStatus", 0x3C2, 8, 1, 6, 61, DBC_CKSUM_NONE, -1, -1 },
-    { "DAS_bodyControls", 0x3E9, 8, 1, 67, 13, DBC_CKSUM_TESLA_BYTESUM, 79, 78 },
-    { "UI_status2", 0x3DF, 8, 1, 80, 12, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_vehicleControl", 0x273, 8, 1, 92, 39, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_vehicleControl2", 0x3B3, 2, 1, 131, 23, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_chargeRequest", 0x333, 4, 1, 154, 5, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_tripPlanning", 0x347, 8, 1, 159, 8, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_hvacRequest", 0x2F3, 5, 1, 167, 11, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_powertrainControl", 0x334, 8, 1, 178, 13, DBC_CKSUM_TESLA_BYTESUM, 190, 189 },
-    { "UI_ventPanelControlRequest", 0x253, 7, 1, 191, 7, DBC_CKSUM_NONE, -1, -1 },
-    { "DI_systemStatus", 0x118, 8, 0, 198, 14, DBC_CKSUM_TESLA_BYTESUM, 198, 199 },
-    { "DAS_status2", 0x389, 8, 0, 212, 17, DBC_CKSUM_TESLA_BYTESUM, 228, 227 },
+    { "SCCM_leftStalk", 0x249, 4, 1, 0, 6, DBC_CKSUM_NONE, -1, 1 },
+    { "VCLEFT_switchStatus", 0x3C2, 8, 1, 6, 62, DBC_CKSUM_NONE, -1, -1 },
+    { "DAS_bodyControls", 0x3E9, 8, 1, 68, 13, DBC_CKSUM_TESLA_BYTESUM, 80, 79 },
+    { "UI_status2", 0x3DF, 8, 0, 81, 12, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_vehicleControl", 0x273, 8, 1, 93, 39, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_vehicleControl2", 0x3B3, 8, 1, 132, 23, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_chargeRequest", 0x333, 5, 1, 155, 6, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_tripPlanning", 0x347, 8, 1, 161, 10, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_hvacRequest", 0x2F3, 8, 0, 171, 13, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_powertrainControl", 0x334, 8, 1, 184, 13, DBC_CKSUM_TESLA_BYTESUM, 196, 195 },
+    { "UI_ventPanelControlRequest", 0x253, 8, 0, 197, 13, DBC_CKSUM_NONE, -1, -1 },
+    { "DI_systemStatus", 0x118, 8, 0, 210, 14, DBC_CKSUM_TESLA_BYTESUM, 210, 211 },
+    { "DAS_status2", 0x389, 8, 1, 224, 17, DBC_CKSUM_TESLA_BYTESUM, 240, 239 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {
-    0x129, 0x118, 0x257, 0x399, 0x389, 0x25D,
+    0x3DF, 0x2F3, 0x253, 0x118, 0x257, 0x399, 0x25D,
 };
 static const uint16_t hw_filter_bus1_ids[] = {
-    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x334, 0x253, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405,
+    0x249, 0x3C2, 0x3E9, 0x273, 0x3B3, 0x333, 0x347, 0x334, 0x129, 0x389, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405, 0x286,
 };
 const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {
-    { hw_filter_bus0_ids, 6 },
+    { hw_filter_bus0_ids, 7 },
     { hw_filter_bus1_ids, 20 },
 };

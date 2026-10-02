@@ -11,7 +11,8 @@
 #                   slot so the frame reaches the DashPilot app over BLE. No
 #                   signal table is emitted (no flash cost beyond one filter).
 #
-# Every NAME must exist in dbc/bus_1_tesla_vehicle.dbc.
+# Every NAME must exist in dbc/new_gen_juniper.dbc (this branch builds for the
+# new-gen Model Y / Juniper only).
 # Keep decode entries tight: every decoded message costs flash. The per-bus
 # filter set (decode + filter, de-duplicated) must stay <= 32 (MCP filter slots).
 #
@@ -19,26 +20,26 @@
 # (dashpilot/bridge/car/cars/tesla.h, TeslaDashKitMapper). With these accepted
 # in hardware the app no longer needs to push a CAN filter over BLE.
 
-# ---- Firmware-decoded messages (all on the vehicle bus) ----
-SCCM_leftStalk        1 decode   # wiper-off: left-stalk wiper button + counter/checksum
-VCLEFT_switchStatus   1 decode   # wiper-off scroll-tick; also app: buckle status
+# ---- Firmware-decoded messages ----
+SCCM_leftStalk        1 decode   # stalk position (unused by wiper-off on Juniper)
+VCLEFT_switchStatus   1 decode   # wiper-off: wiper button + scroll tick; also app: buckle status
 DAS_bodyControls      1 decode   # wiper-off: DAS_wiperSpeed trigger
-UI_status2            1 decode   # multi-finger: UI_activeTouchPoints
+UI_status2            0 decode   # multi-finger: UI_activeTouchPoints (chassis only on Juniper)
 UI_vehicleControl     1 decode   # vehicle control: closure / mirror fold
 UI_vehicleControl2    1 decode   # vehicle control: glovebox (RMW)
 UI_chargeRequest      1 decode   # vehicle control: charge port open/close (RMW)
 UI_tripPlanning       1 decode   # battery preheat: faked supercharger nav (raw RMW)
-UI_hvacRequest        1 decode   # rear AC fan toggle; also app: climate setpoint
+UI_hvacRequest        0 decode   # rear AC fan toggle; also app: climate setpoint (chassis only on Juniper)
 UI_powertrainControl  1 decode   # sport kick-down: UI_pedalMap (RMW)
-UI_ventPanelControlRequest 1 decode  # ac swing: UI_ventPanelLeftPositionX (RMW)
+UI_ventPanelControlRequest 0 decode  # ac swing: lateral mode (RMW, chassis only on Juniper)
 
 # ---- App-forwarded messages on the chassis bus (bus 0) ----
-SCCM_steeringAngleSensor  0 filter  # app: steering angle
+SCCM_steeringAngleSensor  1 filter  # app: steering angle (vehicle only on Juniper)
 DI_systemStatus           0 decode  # app: gear; mirror dip reads DI_gear
 DI_speed                  0 filter  # app: speed
 DAS_status                0 filter  # app: blind spot / speed limit / lane+collision warn
-DAS_status2               0 decode  # app: ADAS state; wiper-off gate reads DAS_lssState
-DAS_road                  0 filter  # app: traffic light color / stop line dist
+DAS_status2               1 decode  # app: ADAS state; wiper-off gate reads DAS_lssState (vehicle only on Juniper)
+DAS_road                  0 filter  # app: traffic light / stop line (static on Juniper)
 
 # ---- App-forwarded messages on the vehicle bus (bus 1) ----
 VCLEFT_lightStatus        1 filter  # app: left turn signal
@@ -50,3 +51,4 @@ BMS_hvBusStatus           1 filter  # app: pack voltage / current
 BMS_bmbMinMax             1 filter  # app: pack temps
 DI_odometerStatus         1 filter  # app: odometer
 VIN_info                  1 filter  # app: VIN assembly (muxed VIN_A/B/C405 by VIN_infoIndex)
+DI_state                  1 filter  # app: cruise state / ACC set speed

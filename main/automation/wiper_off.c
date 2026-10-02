@@ -12,6 +12,18 @@ static const char *TAG = "wiper_off";
 
 #define BUS  1
 
+// Juniper: the wiper button lives in VCLEFT_switchStatus mux 1 (no checksum).
+#define SWC_MSG          "VCLEFT_switchStatus"
+#define SWC_ID           0x3C2
+#define SWC_MUX          1
+#define WIPER_HARD_PRESS 2
+#define SWC_SNAPSHOT_US  (2 * 1000 * 1000)
+
+static portMUX_TYPE s_swc_lock = portMUX_INITIALIZER_UNLOCKED;
+static can_frame_t  s_swc;
+static int64_t      s_swc_us;
+static bool         s_have_swc;
+
 // Persist the enabled flag so it survives a reboot/power-cycle even before the
 // Android app reconnects and re-syncs it.
 #define NVS_NAMESPACE   "wiper_off"
@@ -58,27 +70,53 @@ static void wiper_off_seq_task(void *arg)
     (void)arg;
     ESP_LOGI(TAG, "sequence starting");
 
-    // Align our rolling counter with the car's live SCCM_leftStalk so the
-    // injected frames continue the sequence (next send emits last_seen + 1).
-    dbc_counter_seed_from_bus(BUS, "SCCM_leftStalk");
+    dbc_msg_t m = dbc_msg(SWC_MSG);
+    dbc_sig_t sig_mux    = dbc_sig(m, "VCLEFT_switchStatusIndex");
+    dbc_sig_t sig_button = dbc_sig(m, "VCLEFT_swcWiperButtonState");
+    dbc_sig_t sig_scroll = dbc_sig(m, "VCLEFT_swcLeftScrollTicks");
 
-    // Phase 1: hold the wiper button (wash/wipe = 1ST_DETENT) for 300ms at 100Hz.
-    int64_t end = esp_timer_get_time() + 300000;
+    // Base every injected frame on the car's latest mux-1 frame so the other
+    // switch fields stay valid; a zeroed frame would report them all as SNA.
+    can_frame_t base;
+    bool have;
+    portENTER_CRITICAL(&s_swc_lock);
+    have = s_have_swc && esp_timer_get_time() - s_swc_us < SWC_SNAPSHOT_US;
+    base = s_swc;
+    portEXIT_CRITICAL(&s_swc_lock);
+    if (!have) {
+        ESP_LOGW(TAG, "no fresh %s mux-1 frame, sending from scratch", SWC_MSG);
+        can_frame_init(SWC_MSG, &base);
+        dbc_pack(base.data, sig_mux, SWC_MUX);
+    }
+    dbc_pack(base.data, sig_button, 0);
+    dbc_pack(base.data, sig_scroll, 0);
+
+    // Phase 1: hard-press the wiper button for 200ms at 100Hz (the car's own
+    // press lasted 180ms), then release. This opens the wiper menu.
+    can_frame_t f = base;
+    dbc_pack(f.data, sig_button, WIPER_HARD_PRESS);
+    int64_t end = esp_timer_get_time() + 200000;
     while (esp_timer_get_time() < end) {
-        can_send(BUS, "SCCM_leftStalk", "SCCM_washWipeButtonStatus", 1, false);
+        can_frame_send(BUS, SWC_MSG, &f);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    for (int i = 0; i < 3; i++) {
+        f = base;
+        can_frame_send(BUS, SWC_MSG, &f);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-    // Gap: let the car register the button hold.
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // Gap: the menu opened ~90ms after the press on the recorded drive.
+    vTaskDelay(pdMS_TO_TICKS(500));
 
-    // Phase 2: scroll-down tick (swcLeftScrollTicks = -1, auto-muxed). Twice for
-    // reliability.
+    // Phase 2: scroll-down tick (AUTO -> OFF). Twice for reliability.
     for (int i = 0; i < 2; i++) {
-        can_send(BUS, "VCLEFT_switchStatus", "VCLEFT_swcLeftScrollTicks", -1, false);
+        f = base;
+        dbc_pack(f.data, sig_scroll, -1);
+        can_frame_send(BUS, SWC_MSG, &f);
         if (i == 0) vTaskDelay(pdMS_TO_TICKS(50));
     }
-    ESP_LOGI(TAG, "sequence done");
+    ESP_LOGI(TAG, "sequence done (live base=%d)", have);
 
     vTaskDelete(NULL);
 }
@@ -95,6 +133,14 @@ static void wiper_off_init(automation_t *self)
 static void wiper_off_on_frame(automation_t *self, const can_tagged_frame_t *frame)
 {
     (void)self;
+
+    if (frame->bus_id == BUS && frame->frame.id == SWC_ID && (frame->frame.data[0] & 0x3) == SWC_MUX) {
+        portENTER_CRITICAL(&s_swc_lock);
+        s_swc = frame->frame;
+        s_swc_us = esp_timer_get_time();
+        s_have_swc = true;
+        portEXIT_CRITICAL(&s_swc_lock);
+    }
 
     // DAS_wiperSpeed: 0 = AUTO, 1..14 = manual speeds, 15 = OFF.
     double speed;

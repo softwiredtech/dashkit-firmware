@@ -11,7 +11,8 @@
 
 static const char *TAG = "veh_ctrl";
 
-#define VC_BUS  1
+#define VC_BUS    1
+#define HVAC_BUS  0   // UI_hvacRequest is chassis-only on Juniper
 
 #define VC_BURST_REPEATS   10
 #define VC_BURST_GAP_MS    20
@@ -30,6 +31,9 @@ static const char *TAG = "veh_ctrl";
 #define GEAR_BUS      0
 #define GEAR_REVERSE  2
 
+#define CLOSURE_REAR_TRUNK   1
+#define CLOSURE_FRONT_TRUNK  2
+
 typedef struct {
     uint8_t     opcode;
     const char *msg;
@@ -47,6 +51,14 @@ static const vc_command_t s_commands[] = {
 };
 #define VC_COMMAND_COUNT  (sizeof(s_commands) / sizeof(s_commands[0]))
 
+// Juniper opens the rear trunk through UI_vehicleControl2.UI_trunkRequest (the
+// car's UI pulses it ~0.7 s); UI_remoteClosureRequest never moves for it.
+static const vc_command_t s_trunk_command =
+    { VC_CMD_CLOSURE, "UI_vehicleControl2", "UI_trunkRequest", true, 700 };
+// Frunk by analogy with the trunk (unverified on Juniper: no frunk event recorded).
+static const vc_command_t s_frunk_command =
+    { VC_CMD_CLOSURE, "UI_vehicleControl", "UI_frunkRequest", true, 700 };
+
 typedef struct {
     uint8_t  opcode;
     uint16_t value;
@@ -59,6 +71,7 @@ static QueueHandle_t s_queue = NULL;
 // at start (driver changed it in the UI) or target is cleared.
 typedef struct {
     const char  *name;
+    uint8_t      bus;
     const char  *msg;
     const char  *sig;
     unsigned     period_ms;
@@ -67,8 +80,8 @@ typedef struct {
     volatile int baseline;  // car's value when injection started, -1 = unknown
 } injector_t;
 
-static injector_t s_rear_fan   = { "rear fan",   "UI_hvacRequest",    "UI_hvacReqSecondRowState", REAR_FAN_INJECT_MS,   0, -1, -1 };
-static injector_t s_mirror_dip = { "mirror dip", "UI_vehicleControl", "UI_mirrorDipOnReverse",    MIRROR_DIP_INJECT_MS, 0, -1, -1 };
+static injector_t s_rear_fan   = { "rear fan",   HVAC_BUS, "UI_hvacRequest",    "UI_hvacReqSecondRowState", REAR_FAN_INJECT_MS,   0, -1, -1 };
+static injector_t s_mirror_dip = { "mirror dip", VC_BUS,   "UI_vehicleControl", "UI_mirrorDipOnReverse",    MIRROR_DIP_INJECT_MS, 0, -1, -1 };
 
 // Config opcodes are not CAN frames: they route to an automation's on_config.
 static bool is_config_opcode(uint8_t opcode)
@@ -146,7 +159,7 @@ static void rear_fan_toggle(void)
     }
     double cur;
     int target;
-    if (can_get(VC_BUS, s_rear_fan.msg, s_rear_fan.sig, &cur, false) == ESP_OK) {
+    if (can_get(s_rear_fan.bus, s_rear_fan.msg, s_rear_fan.sig, &cur, false) == ESP_OK) {
         int s = (int)cur;
         s_rear_fan.baseline = s;
         target = (s == REAR_FAN_AUTO || s == REAR_FAN_OFF) ? REAR_FAN_HIGH : REAR_FAN_OFF;
@@ -177,7 +190,7 @@ static void mirror_dip_toggle(void)
         return;
     }
     double cur;
-    if (can_get(VC_BUS, s_mirror_dip.msg, s_mirror_dip.sig, &cur, false) != ESP_OK) {
+    if (can_get(s_mirror_dip.bus, s_mirror_dip.msg, s_mirror_dip.sig, &cur, false) != ESP_OK) {
         ESP_LOGW(TAG, "mirror dip: no live UI_vehicleControl frame");
         return;
     }
@@ -197,7 +210,7 @@ static void mirror_dip_toggle(void)
 static bool injector_externally_changed(injector_t *inj)
 {
     double cur;
-    if (can_get(VC_BUS, inj->msg, inj->sig, &cur, false) != ESP_OK) {
+    if (can_get(inj->bus, inj->msg, inj->sig, &cur, false) != ESP_OK) {
         return false;
     }
     int v = (int)cur;
@@ -221,7 +234,7 @@ static void injector_step(injector_t *inj)
         inj->target = -1;
         return;
     }
-    can_send_live(VC_BUS, inj->msg, inj->sig, target, false);
+    can_send_live(inj->bus, inj->msg, inj->sig, target, false);
 }
 
 static void inject_task(void *arg)
@@ -272,7 +285,11 @@ static void vehicle_control_task(void *arg)
             ESP_LOGW(TAG, "unknown opcode 0x%02X", req.opcode);
             continue;
         }
-        if (cmd->rmw) {
+        if (cmd->opcode == VC_CMD_CLOSURE && req.value == CLOSURE_REAR_TRUNK) {
+            send_rmw_pulse(&s_trunk_command, 1);
+        } else if (cmd->opcode == VC_CMD_CLOSURE && req.value == CLOSURE_FRONT_TRUNK) {
+            send_rmw_pulse(&s_frunk_command, 1);
+        } else if (cmd->rmw) {
             send_rmw_pulse(cmd, req.value);
         } else {
             send_burst(cmd, req.value);

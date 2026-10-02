@@ -15,7 +15,8 @@
 
 static const char *TAG = "climate_keep";
 
-#define BUS  1
+#define BUS       1
+#define HVAC_BUS  0   // UI_hvacRequest is chassis-only on Juniper
 
 #define PRESENCE_MSG   "UI_vehicleControl2"
 #define PRESENCE_SIG   "UI_userPresent"
@@ -153,10 +154,10 @@ static void climate_keep_on_frame(automation_t *self, const can_tagged_frame_t *
     // power != ON so they never clobber it -- we keep the last running state.
     if (frame->frame.id == HVAC_ID) {
         double power;
-        if (can_get(BUS, HVAC_MSG, "UI_hvacReqUserPowerState", &power, false) == ESP_OK
+        if (can_get(HVAC_BUS, HVAC_MSG, "UI_hvacReqUserPowerState", &power, false) == ESP_OK
             && (int)power == HVAC_POWER_ON) {
             can_frame_t f;
-            if (can_frame_live(BUS, HVAC_MSG, &f) == ESP_OK) {
+            if (can_frame_live(HVAC_BUS, HVAC_MSG, &f) == ESP_OK) {
                 s_snapshot = f;
                 s_snapshot_us = esp_timer_get_time();
                 if (!s_snapshot_valid) {
@@ -216,7 +217,7 @@ static void climate_keep_inject_task(void *arg)
                     can_frame_t f = s_snapshot;
                     dbc_pack(f.data, sig_power, HVAC_POWER_OFF);
                     dbc_pack(f.data, sig_keep,  HVAC_KEEP_OFF);
-                    can_frame_send(BUS, HVAC_MSG, &f);
+                    can_frame_send(HVAC_BUS, HVAC_MSG, &f);
                     vTaskDelay(pdMS_TO_TICKS(INJECT_MS));
                 }
                 ESP_LOGW(TAG, "shutoff burst sent (%d frames)", SHUTOFF_REPS);
@@ -227,7 +228,7 @@ static void climate_keep_inject_task(void *arg)
                 can_frame_t f = s_snapshot;
                 dbc_pack(f.data, sig_power, HVAC_POWER_ON);
                 dbc_pack(f.data, sig_keep,  HVAC_KEEP_MODE);
-                esp_err_t err = can_frame_send(BUS, HVAC_MSG, &f);
+                esp_err_t err = can_frame_send(HVAC_BUS, HVAC_MSG, &f);
 
                 if ((count++ % TX_LOG_EVERY) == 0) {
                     int remaining_s = (int)((s_deadline_us - now) / 1000000);

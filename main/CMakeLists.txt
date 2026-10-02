@@ -78,11 +78,11 @@ if(DBC_PY)
     add_custom_command(
         OUTPUT  "${DBC_GEN_C}" "${DBC_GEN_H}"
         COMMAND "${DBC_PY}" "${DBC_TOOLS_DIR}/gen_dbc.py"
-                --dbc       "${DBC_DIR}/bus_1_tesla_vehicle.dbc"
+                --dbc       "${DBC_DIR}/new_gen_juniper.dbc"
                 --whitelist "${DBC_DIR}/used_messages.txt"
                 --out-c     "${DBC_GEN_C}"
                 --out-h     "${DBC_GEN_H}"
-        DEPENDS "${DBC_DIR}/bus_1_tesla_vehicle.dbc"
+        DEPENDS "${DBC_DIR}/new_gen_juniper.dbc"
                 "${DBC_DIR}/used_messages.txt"
                 "${DBC_TOOLS_DIR}/gen_dbc.py"
         COMMENT "Regenerating DBC tables (dbc_generated.{c,h})"
