@@ -1,0 +1,762 @@
+VERSION "2026.2-juniper"
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: VEH CH X
+
+BO_ 585 SCCM_leftStalk: 4 VEH
+ SG_ SCCM_leftStalkCrc : 0|8@1+ (1,0) [0|255] "" X
+ SG_ SCCM_leftStalkCounter : 8|4@1+ (1,0) [0|15] "" X
+ SG_ SCCM_highBeamStalkStatus : 12|2@1+ (1,0) [0|3] "" X
+ SG_ SCCM_washWipeButtonStatus : 14|2@1+ (1,0) [0|3] "" X
+ SG_ SCCM_turnIndicatorStalkStatus : 16|4@1+ (1,0) [0|9] "" X
+ SG_ SCCM_turnIndicatorStalkAngle : 20|12@1+ (1,0) [0|4095] "" X
+
+BO_ 962 VCLEFT_switchStatus: 8 VEH
+ SG_ VCLEFT_switchStatusIndex M : 0|2@1+ (1,0) [0|2] "" X
+ SG_ VCLEFT_2RowSeatBothFoldFlatSwitc m1 : 40|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_2RowSeatCenterSwitch m1 : 37|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_2RowSeatLeftFoldFlatSwitc m1 : 38|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_2RowSeatReclineSwitch m1 : 36|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_2RowSeatRightFoldFlatSwit m1 : 39|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_brakePressed m0 : 60|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_brakeSwitchPressed m0 : 4|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowAutoDownLR m1 : 35|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowAutoUpLR m1 : 33|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowDownLR m1 : 34|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoDownLF m0 : 35|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoDownLR m0 : 39|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoDownRF m0 : 43|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoDownRR m0 : 47|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoUpLF m0 : 33|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoUpLR m0 : 37|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoUpRF m0 : 41|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackAutoUpRR m0 : 45|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackDownLF m0 : 34|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackDownLR m0 : 38|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackDownRF m0 : 42|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackDownRR m0 : 46|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackUpLF m0 : 32|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackUpLR m0 : 36|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackUpRF m0 : 40|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowSwPackUpRR m0 : 44|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_btnWindowUpLR m1 : 32|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_frontBuckleSwitch m0 : 48|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontOccupancySwitch m0 : 50|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatBackrestBack m0 : 20|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatBackrestForward m0 : 22|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatLiftDown m0 : 16|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatLiftUp m0 : 18|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatLumbarDown m0 : 24|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatLumbarIn m0 : 28|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatLumbarOut m0 : 30|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatLumbarUp m0 : 26|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatTiltDown m0 : 12|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatTiltUp m0 : 14|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatTrackBack m0 : 8|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontSeatTrackForward m0 : 10|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_hazardButtonPressed m0 : 3|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_hornSwitchPressed m0 : 2|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_rearCenterBuckleSwitch m0 : 62|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_rearCenterOccupancySwitch m0 : 54|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_rearHVACButtonPressed m0 : 61|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_rearLeftBuckleSwitch m0 : 52|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_rearLeftOccupancySwitch m0 : 56|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_rearRightOccupancySwitch m0 : 58|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_rightMirrorTilt m0 : 5|3@1+ (1,0) [0|4] "" X
+ SG_ VCLEFT_swcLeftDoublePress m1 : 41|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_swcLeftPressed m1 : 5|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_swcLeftScrollTicks m1 : 16|6@1- (1,0) [-32|31] "" X
+ SG_ VCLEFT_swcLeftTiltLeft m1 : 14|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_swcLeftTiltRight m1 : 3|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_swcRightDoublePress m1 : 42|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_swcRightPressed m1 : 12|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_swcRightScrollTicks m1 : 24|6@1- (1,0) [-32|31] "" X
+ SG_ VCLEFT_swcRightTiltLeft m1 : 8|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_swcRightTiltRight m1 : 10|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_swcWiperButtonState m1 : 22|2@1+ (1,0) [0|3] "" X
+
+BO_ 1001 DAS_bodyControls: 8 VEH
+ SG_ DAS_bodyControlsChecksum : 56|8@1+ (1,0) [0|255] "" X
+ SG_ DAS_bodyControlsCounter : 52|4@1+ (1,0) [0|15] "" X
+ SG_ DAS_dynamicBrakeLightRequest : 22|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_hazardLightRequest : 2|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_headlightRequest : 0|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_heaterRequest : 13|2@1+ (1,0) [0|2] "" X
+ SG_ DAS_highLowBeamDecision : 11|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_highLowBeamOffReason : 15|3@1+ (1,0) [0|5] "" X
+ SG_ DAS_turnIndicatorRequest : 8|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_turnIndicatorRequestReason : 18|3@1+ (1,0) [0|7] "" X
+ SG_ DAS_wiperSpeed : 4|4@1+ (1,0) [0|15] "" X
+ SG_ DAS_radarHeaterRequest : 23|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_ahlbOverride : 24|1@1+ (1,0) [0|1] "" X
+
+BO_ 991 UI_status2: 8 CH
+ SG_ UI_mobileAppStepCount : 0|16@1+ (1,0) [0|65535] "" X
+ SG_ UI_userRequestSnapshot : 16|1@1+ (1,0) [0|1] "" X
+ SG_ UI_touchDetected : 17|1@1+ (1,0) [0|1] "" X
+ SG_ UI_validDeviceForEUSummon : 18|1@1+ (1,0) [0|1] "" X
+ SG_ UI_locatedAtHome : 19|1@1+ (1,0) [0|1] "" X
+ SG_ UI_locatedAtWork : 20|1@1+ (1,0) [0|1] "" X
+ SG_ UI_locatedAtFavorite : 21|1@1+ (1,0) [0|1] "" X
+ SG_ UI_displayInDarkMode : 22|1@1+ (1,0) [0|1] "" X
+ SG_ UI_userActivity : 23|1@1+ (1,0) [0|1] "" X
+ SG_ UI_activeTouchPoints : 24|8@1+ (1,0) [0|255] "" X
+ SG_ UI_linkState : 32|2@1+ (1,0) [0|3] "" X
+ SG_ UI_sentryModeState : 34|3@1+ (1,0) [0|7] "" X
+
+BO_ 627 UI_vehicleControl: 8 VEH
+ SG_ UI_accessoryPowerRequest : 0|1@1+ (1,0) [0|1] "" X
+ SG_ UI_alarmEnabled : 20|1@1+ (1,0) [0|1] "" X
+ SG_ UI_ambientLightingEnabled : 40|1@1+ (1,0) [0|1] "" X
+ SG_ UI_autoFoldMirrorsOn : 52|1@1+ (1,0) [0|1] "" X
+ SG_ UI_autoHighBeamEnabled : 41|1@1+ (1,0) [0|1] "" X
+ SG_ UI_childDoorLockOn : 16|1@1+ (1,0) [0|1] "" X
+ SG_ UI_displayBrightnessLevel : 32|8@1+ (0.5,0) [0|127.5] "%" X
+ SG_ UI_domeLightSwitch : 59|2@1+ (1,0) [0|3] "" X
+ SG_ UI_driveStateRequest : 62|1@1+ (1,0) [0|1] "" X
+ SG_ UI_frontFogSwitch : 3|1@1+ (1,0) [0|1] "" X
+ SG_ UI_frontLeftSeatHeatReq : 42|2@1+ (1,0) [0|3] "" X
+ SG_ UI_frontRightSeatHeatReq : 44|2@1+ (1,0) [0|3] "" X
+ SG_ UI_frunkRequest : 5|1@1+ (1,0) [0|1] "" X
+ SG_ UI_globalUnlockOn : 15|1@1+ (1,0) [0|1] "" X
+ SG_ UI_honkHorn : 61|1@1+ (1,0) [0|1] "" X
+ SG_ UI_intrusionSensorOn : 21|1@1+ (1,0) [0|1] "" X
+ SG_ UI_lightSwitch : 1|2@1+ (1,0) [0|3] "" X
+ SG_ UI_lockRequest : 17|3@1+ (1,0) [0|7] "" X
+ SG_ UI_mirrorDipOnReverse : 53|1@1+ (1,0) [0|1] "" X
+ SG_ UI_mirrorFoldRequest : 24|2@1+ (1,0) [0|3] "" X
+ SG_ UI_mirrorHeatRequest : 26|1@1+ (1,0) [0|1] "" X
+ SG_ UI_powerOff : 31|1@1+ (1,0) [0|1] "" X
+ SG_ UI_rearCenterSeatHeatReq : 48|2@1+ (1,0) [0|3] "" X
+ SG_ UI_rearFogSwitch : 23|1@1+ (1,0) [0|1] "" X
+ SG_ UI_rearLeftSeatHeatReq : 46|2@1+ (1,0) [0|3] "" X
+ SG_ UI_rearRightSeatHeatReq : 50|2@1+ (1,0) [0|3] "" X
+ SG_ UI_rearWindowLockout : 63|1@1+ (1,0) [0|1] "" X
+ SG_ UI_remoteClosureRequest : 54|2@1+ (1,0) [0|3] "" X
+ SG_ UI_remoteStartRequest : 27|3@1+ (1,0) [0|7] "" X
+ SG_ UI_seeYouHomeLightingOn : 30|1@1+ (1,0) [0|1] "" X
+ SG_ UI_steeringBacklightEnabled : 8|1@1+ (1,0) [0|1] "" X
+ SG_ UI_steeringButtonMode : 9|3@1+ (1,0) [0|7] "" X
+ SG_ UI_stop12vSupport : 22|1@1+ (1,0) [0|1] "" X
+ SG_ UI_summonActive : 4|1@1+ (1,0) [0|1] "" X
+ SG_ UI_unlockOnPark : 14|1@1+ (1,0) [0|1] "" X
+ SG_ UI_walkAwayLock : 13|1@1+ (1,0) [0|1] "" X
+ SG_ UI_walkUpUnlock : 12|1@1+ (1,0) [0|1] "" X
+ SG_ UI_wiperMode : 6|2@1+ (1,0) [0|3] "" X
+ SG_ UI_wiperRequest : 56|3@1+ (1,0) [0|7] "" X
+
+BO_ 947 UI_vehicleControl2: 8 VEH
+ SG_ UI_PINToDriveEnabled : 6|1@1+ (1,0) [0|1] "" X
+ SG_ UI_PINToDrivePassed : 7|1@1+ (1,0) [0|1] "" X
+ SG_ UI_UMCUpdateInhibit : 2|1@1+ (1,0) [0|1] "" X
+ SG_ UI_VCLEFTFeature1 : 15|1@1+ (1,0) [0|1] "" X
+ SG_ UI_VCSECFeature1 : 14|1@1+ (1,0) [0|1] "" X
+ SG_ UI_WCUpdateInhibit : 3|1@1+ (1,0) [0|1] "" X
+ SG_ UI_alarmTriggerRequest : 13|1@1+ (1,0) [0|1] "" X
+ SG_ UI_autoRollWindowsOnLockEnable : 29|1@1+ (1,0) [0|1] "" X
+ SG_ UI_autopilotPowerStateRequest : 25|2@1+ (1,0) [0|2] "" X
+ SG_ UI_batteryPreconditioningRequest : 23|1@1+ (1,0) [0|1] "" X
+ SG_ UI_coastDownMode : 24|1@1+ (1,0) [0|1] "" X
+ SG_ UI_efuseMXResistanceEstArmed : 30|1@1+ (1,0) [0|1] "" X
+ SG_ UI_freeRollModeRequest : 19|1@1+ (1,0) [0|1] "" X
+ SG_ UI_gloveboxRequest : 0|1@1+ (1,0) [0|1] "" X
+ SG_ UI_lightSwitch : 9|3@1+ (1,0) [0|4] "" X
+ SG_ UI_locksPanelActive : 5|1@1+ (1,0) [0|1] "" X
+ SG_ UI_readyToAddKey : 12|1@1+ (1,0) [0|1] "" X
+ SG_ UI_shorted12VCellTestMode : 27|2@1+ (1,0) [0|2] "" X
+ SG_ UI_soundHornOnLock : 4|1@1+ (1,0) [0|1] "" X
+ SG_ UI_summonState : 16|2@1+ (1,0) [0|3] "" X
+ SG_ UI_trunkRequest : 1|1@1+ (1,0) [0|1] "" X
+ SG_ UI_userPresent : 18|1@1+ (1,0) [0|1] "" X
+ SG_ UI_windowRequest : 20|3@1+ (1,0) [0|4] "" X
+
+BO_ 819 UI_chargeRequest: 5 VEH
+ SG_ UI_openChargePortDoorRequest : 0|1@1+ (1,0) [0|1] "" X
+ SG_ UI_closeChargePortDoorRequest : 1|1@1+ (1,0) [0|1] "" X
+ SG_ UI_chargeEnableRequest : 2|1@1+ (1,0) [0|1] "" X
+ SG_ UI_acChargeCurrentLimit : 8|7@1+ (1,0) [0|127] "A" X
+ SG_ UI_chargeTerminationPct : 16|10@1+ (0.1,0) [0|102.3] "%" X
+ SG_ UI_cpInletHeaterRequest : 36|2@1+ (1,0) [0|2] "" X
+
+BO_ 839 UI_tripPlanning: 8 VEH
+ SG_ UI_tripPlanningActive : 0|1@1+ (1,0) [0|1] "" X
+ SG_ UI_navToSupercharger : 1|1@1+ (1,0) [0|1] "" X
+ SG_ UI_navSuperchargerType : 2|3@1+ (1,0) [0|7] "" X
+ SG_ UI_batteryPreconditioningState : 5|2@1+ (1,0) [0|3] "" X
+ SG_ UI_requestBatteryHeating : 7|1@1+ (1,0) [0|1] "" X
+ SG_ UI_someValueA : 8|8@1+ (1,0) [0|255] "" X
+ SG_ UI_someValueB : 16|8@1+ (1,0) [0|255] "" X
+ SG_ UI_someValueC : 24|8@1- (1,0) [-128|127] "" X
+ SG_ UI_tripPlanChargingTargetPercent : 32|10@1+ (1,0) [0|1023] "%" X
+ SG_ UI_energyAtDestination : 48|16@1- (0.01,0) [-327.68|327.67] "kWh" X
+
+BO_ 755 UI_hvacRequest: 8 CH
+ SG_ UI_hvacReqTempSetpointLeft : 0|5@1+ (0.5,15) [15|28] "degC" X
+ SG_ UI_hvacReqAutoBlowerLevel : 5|3@1+ (1,0) [0|4] "" X
+ SG_ UI_hvacReqTempSetpointRight : 8|5@1+ (0.5,15) [15|28] "degC" X
+ SG_ UI_hvacReqAirDistributionMode : 13|3@1+ (1,0) [0|7] "" X
+ SG_ UI_hvacReqBlowerSegment : 16|4@1+ (1,0) [0|11] "" X
+ SG_ UI_hvacReqRecirc : 20|2@1+ (1,0) [0|2] "" X
+ SG_ UI_hvacReqACDisable : 22|2@1+ (1,0) [0|2] "" X
+ SG_ UI_hvacReqManualDefogState : 24|2@1+ (1,0) [0|2] "" X
+ SG_ UI_hvacReqUserPowerState : 26|3@1+ (1,0) [0|4] "" X
+ SG_ UI_hvacReqSecondRowState : 29|3@1+ (1,0) [0|4] "" X
+ SG_ UI_hvacUseModeledDuctTemp : 32|1@1+ (1,0) [0|1] "" X
+ SG_ UI_hvacReqKeepClimateOn : 33|2@1+ (1,0) [0|3] "" X
+ SG_ UI_hvacClimateNudgeStatus : 58|3@1+ (1,0) [0|4] "" X
+
+BO_ 820 UI_powertrainControl: 8 VEH
+ SG_ UI_creepTorque : 34|1@1+ (1,0) [0|1] "" X
+ SG_ UI_limitMode : 32|2@1+ (1,0) [0|3] "" X
+ SG_ UI_motorOnMode : 35|2@1+ (1,0) [0|2] "" X
+ SG_ UI_pedalMap : 5|2@1+ (1,0) [0|2] "" X
+ SG_ UI_powertrainControlChecksum : 56|8@1+ (1,0) [0|255] "" X
+ SG_ UI_powertrainControlCounter : 52|4@1+ (1,0) [0|15] "" X
+ SG_ UI_regenTorqueMax : 24|8@1+ (0.5,0) [0|127.5] "%" X
+ SG_ UI_speedLimit : 16|8@1+ (1,50) [50|305] "kph" X
+ SG_ UI_systemPowerLimit : 0|5@1+ (20,20) [20|640] "kW" X
+ SG_ UI_systemTorqueLimit : 8|6@1+ (100,4000) [4000|10300] "Nm" X
+ SG_ UI_trackModeRequest : 42|2@1+ (1,0) [0|2] "" X
+ SG_ UI_wasteMode : 37|2@1+ (1,0) [0|2] "" X
+ SG_ UI_wasteModeRegenLimit : 40|2@1+ (1,0) [0|3] "" X
+
+BO_ 595 UI_ventPanelControlRequest: 8 CH
+ SG_ UI_ventPanelControlRequestIndex M : 0|8@1+ (1,0) [0|1] "" X
+ SG_ UI_ventPanelLeftPositionX m0 : 8|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_ventPanelLeftPositionY m0 : 16|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_ventPanelLeftLateralSplit m0 : 24|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_ventPanelRightPositionX m0 : 32|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_ventPanelRightPositionY m0 : 40|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_ventPanelRightLateralSplit m0 : 48|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_ventPanelLeftLateralMode m0 : 56|2@1+ (1,0) [0|2] "" X
+ SG_ UI_ventPanelRightLateralMode m0 : 58|2@1+ (1,0) [0|2] "" X
+ SG_ UI_vent2RLeftPositionX m1 : 8|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_vent2RLeftPositionY m1 : 16|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_vent2RRightPositionX m1 : 24|8@1+ (0.5,0) [0|100] "%" X
+ SG_ UI_vent2RRightPositionY m1 : 32|8@1+ (0.5,0) [0|100] "%" X
+
+BO_ 297 SCCM_steeringAngleSensor: 8 VEH
+ SG_ SCCM_steeringAngleCrc : 0|8@1+ (1,0) [0|255] "" X
+ SG_ SCCM_steeringAngleCounter : 8|4@1+ (1,0) [0|15] "" X
+ SG_ SCCM_supplierID : 12|2@1+ (1,0) [0|3] "" X
+ SG_ SCCM_steeringAngleSensorStatus : 14|2@1+ (1,0) [0|3] "" X
+ SG_ SCCM_steeringAngle : 16|14@1+ (0.1,-819.2) [-819.2|819.1] "deg" X
+ SG_ SCCM_steeringAngleValidity : 30|2@1+ (1,0) [0|3] "" X
+ SG_ SCCM_steeringAngleSpeed : 32|14@1+ (0.5,-4096) [-4096|4095.5] "deg/s" X
+ SG_ SCCM_steeringAngleSensorReservd1 : 46|2@1+ (1,0) [0|3] "" X
+ SG_ SCCM_steeringAngleSensorReservd2 : 48|8@1+ (1,0) [0|255] "" X
+ SG_ SCCM_steeringAngleSensorReservd3 : 56|8@1+ (1,0) [0|255] "" X
+
+BO_ 280 DI_systemStatus: 8 VEH
+ SG_ DI_accelPedalPos : 32|8@1+ (0.4,0) [0|100] "%" X
+ SG_ DI_brakePedalState : 19|2@1+ (1,0) [0|2] "" X
+ SG_ DI_driveBlocked : 12|2@1+ (1,0) [0|2] "" X
+ SG_ DI_epbRequest : 44|2@1+ (1,0) [0|2] "" X
+ SG_ DI_gear : 21|3@1+ (1,0) [0|7] "" X
+ SG_ DI_immobilizerState : 27|3@1+ (1,0) [0|6] "" X
+ SG_ DI_keepAliveRequest : 47|1@1+ (1,0) [0|1] "" X
+ SG_ DI_proximity : 46|1@1+ (1,0) [0|1] "" X
+ SG_ DI_regenLight : 26|1@1+ (1,0) [0|1] "" X
+ SG_ DI_systemState : 16|3@1+ (1,0) [0|5] "" X
+ SG_ DI_systemStatusChecksum : 0|8@1+ (1,0) [0|255] "" X
+ SG_ DI_systemStatusCounter : 8|4@1+ (1,0) [0|15] "" X
+ SG_ DI_trackModeState : 48|2@1+ (1,0) [0|2] "" X
+ SG_ DI_tractionControlMode : 40|3@1+ (1,0) [0|5] "" X
+
+BO_ 599 DI_speed: 8 VEH
+ SG_ DI_speedChecksum : 0|8@1+ (1,0) [0|255] "" X
+ SG_ DI_speedCounter : 8|4@1+ (1,0) [0|15] "" X
+ SG_ DI_vehicleSpeed : 12|12@1+ (0.08,-40) [-40|287.6] "kph" X
+ SG_ DI_uiSpeed : 24|8@1+ (1,0) [0|255] "" X
+ SG_ DI_uiSpeedUnits : 32|1@1+ (1,0) [0|1] "" X
+
+BO_ 646 DI_state: 8 VEH
+ SG_ DI_locStatusChecksum : 0|8@1+ (1,0) [0|255] "" X
+ SG_ DI_locStatusCounter : 8|4@1+ (1,0) [0|15] "" X
+ SG_ DI_cruiseState : 12|3@1+ (1,0) [0|7] "" X
+ SG_ DI_digitalSpeed : 15|9@1+ (0.5,0) [0|255.5] "speed" X
+ SG_ DI_speedUnits : 24|1@1+ (1,0) [0|1] "" X
+ SG_ DI_autoparkState : 25|4@1+ (1,0) [0|15] "" X
+ SG_ DI_parkBrakeState : 32|4@1+ (1,0) [0|15] "" X
+ SG_ DI_autopilotRequest : 36|1@1+ (1,0) [0|1] "" X
+ SG_ DI_aebState : 37|3@1+ (1,0) [0|7] "" X
+ SG_ DI_pmmStatus : 40|2@1+ (1,0) [0|3] "" X
+ SG_ DI_vehicleHoldState : 42|3@1+ (1,0) [0|7] "" X
+ SG_ DI_rollPreventionState : 45|3@1+ (1,0) [0|7] "" X
+ SG_ DI_summonInPanic : 48|1@1+ (1,0) [0|1] "" X
+
+BO_ 921 DAS_status: 8 CH
+ SG_ DAS_autoLaneChangeState : 46|5@1+ (1,0) [0|31] "" X
+ SG_ DAS_autoParked : 25|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_autoparkReady : 24|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_autoparkWaitingForBrake : 26|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_autopilotHandsOnState : 42|4@1+ (1,0) [0|15] "" X
+ SG_ DAS_autopilotState : 0|4@1+ (1,0) [0|15] "" X
+ SG_ DAS_blindSpotRearLeft : 4|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_blindSpotRearRight : 6|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_csaState : 35|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_fleetSpeedState : 40|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_forwardCollisionWarning : 22|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_fusedSpeedLimit : 8|5@1+ (5,0) [0|155] "kph/mph" X
+ SG_ DAS_heaterState : 21|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_laneDepartureWarning : 37|3@1+ (1,0) [0|5] "" X
+ SG_ DAS_sideCollisionAvoid : 30|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_sideCollisionInhibit : 34|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_sideCollisionWarning : 32|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_statusChecksum : 56|8@1+ (1,0) [0|255] "" X
+ SG_ DAS_statusCounter : 52|4@1+ (1,0) [0|15] "" X
+ SG_ DAS_summonAvailable : 51|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_summonClearedGate : 15|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_summonFwdLeashReached : 28|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_summonObstacle : 14|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_summonRvsLeashReached : 29|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_suppressSpeedWarning : 13|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_visionOnlySpeedLimit : 16|5@1+ (5,0) [0|155] "kph/mph" X
+
+BO_ 905 DAS_status2: 8 VEH
+ SG_ DAS_ACC_report : 26|5@1+ (1,0) [0|31] "" X
+ SG_ DAS_accSpeedLimit : 0|10@1+ (0.2,0) [0|204.6] "mph" X
+ SG_ DAS_activationFailureStatus : 14|2@1+ (1,0) [0|2] "" X
+ SG_ DAS_driverInteractionLevel : 38|2@1+ (1,0) [0|2] "" X
+ SG_ DAS_longCollisionWarning : 48|4@1+ (1,0) [0|15] "" X
+ SG_ DAS_lssState : 31|3@1+ (1,0) [0|7] "" X
+ SG_ DAS_pmmCameraFaultReason : 24|2@1+ (1,0) [0|2] "" X
+ SG_ DAS_pmmLoggingRequest : 13|1@1+ (1,0) [0|1] "" X
+ SG_ DAS_pmmObstacleSeverity : 10|3@1+ (1,0) [0|7] "" X
+ SG_ DAS_pmmRadarFaultReason : 19|2@1+ (1,0) [0|2] "" X
+ SG_ DAS_pmmSysFaultReason : 21|3@1+ (1,0) [0|7] "" X
+ SG_ DAS_pmmUltrasonicsFaultReason : 16|3@1+ (1,0) [0|4] "" X
+ SG_ DAS_ppOffsetDesiredRamp : 40|8@1+ (0.01,-1.28) [-1.28|1.27] "m" X
+ SG_ DAS_radarTelemetry : 34|2@1+ (1,0) [0|2] "" X
+ SG_ DAS_robState : 36|2@1+ (1,0) [0|3] "" X
+ SG_ DAS_status2Checksum : 56|8@1+ (1,0) [0|255] "" X
+ SG_ DAS_status2Counter : 52|4@1+ (1,0) [0|15] "" X
+
+BO_ 605 DAS_road: 8 VEH
+ SG_ DAS_stopLineDist : 16|8@1+ (0.5,0) [0|127.5] "m" X
+ SG_ DAS_trafficLightColor : 26|3@0+ (1,0) [0|7] "" X
+
+BO_ 994 VCLEFT_lightStatus: 7 VEH
+ SG_ VCLEFT_FLMapLightStatus : 6|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_FLMapLightSwitchPressed : 14|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_FRMapLightStatus : 8|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_FRMapLightSwitchPressed : 15|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_RLMapLightStatus : 10|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_RLMapLightSwitchPressed : 16|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_RRMapLightStatus : 12|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_RRMapLightSwitchPressed : 17|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_brakeLightStatus : 0|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_brakeTrailerLightStatus : 22|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_dynamicBrakeLightStatus : 44|2@1+ (1,0) [0|2] "" X
+ SG_ VCLEFT_fogTrailerLightStatus : 26|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_frontRideHeight : 28|8@1- (1,0) [-127|127] "mm" X
+ SG_ VCLEFT_leftTurnTrailerLightStatus : 18|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_rearRideHeight : 36|8@1- (1,0) [-127|127] "mm" X
+ SG_ VCLEFT_reverseTrailerLightStatus : 49|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_rideHeightSensorFault : 48|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_rightTrnTrailerLightStatus : 20|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_tailLightStatus : 2|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_tailTrailerLightStatus : 24|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_trailerDetected : 46|2@1+ (1,0) [0|3] "" X
+ SG_ VCLEFT_turnSignalStatus : 4|2@1+ (1,0) [0|3] "" X
+
+BO_ 995 VCRIGHT_lightStatus: 4 VEH
+ SG_ VCRIGHT_brakeLightStatus : 0|2@1+ (1,0) [0|3] "" X
+ SG_ VCRIGHT_tailLightStatus : 2|2@1+ (1,0) [0|3] "" X
+ SG_ VCRIGHT_turnSignalStatus : 4|2@1+ (1,0) [0|3] "" X
+ SG_ VCRIGHT_reverseLightStatus : 6|2@1+ (1,0) [0|3] "" X
+ SG_ VCRIGHT_rearFogLightStatus : 8|2@1+ (1,0) [0|3] "" X
+ SG_ VCRIGHT_fasciaReverseLightStatus : 13|2@1+ (1,0) [0|3] "" X
+ SG_ VCRIGHT_CHMSLLightStatus : 29|2@1+ (1,0) [0|3] "" X
+
+BO_ 737 VCFRONT_status: 8 VEH
+ SG_ VCFRONT_statusIndex M : 0|3@1+ (1,0) [0|6] "" X
+ SG_ VCFRONT_12VARailStable m5 : 5|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_12VBRailStable m5 : 6|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_12VOverchargeCounter m4 : 16|4@1+ (1,0) [0|15] "" X
+ SG_ VCFRONT_5VARailStable m5 : 3|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_5VBRailStable m5 : 4|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_AS8510Voltage m5 : 28|12@1+ (0.00544368,0) [0|22.2864] "V" X
+ SG_ VCFRONT_ChargePumpVoltageStable m5 : 9|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_HSDInitCompleteU13 m5 : 11|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_HSDInitCompleteU16 m5 : 12|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_IBSFault m4 : 15|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_PCSMia m4 : 14|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_PEResetLineState m5 : 10|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_airCompressorStatus m0 : 25|3@1+ (1,0) [0|7] "" X
+ SG_ VCFRONT_anyClosureOpen m0 : 49|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_anyDoorOpen m0 : 50|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_batterySMState m1 : 16|4@1+ (1,0) [0|8] "" X
+ SG_ VCFRONT_chargeNeeded m4 : 13|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_chillerDemandActive m3 : 26|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_compPerfRecoveryLimited m3 : 27|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_coolantFillRoutineStatus m3 : 50|2@1+ (1,0) [0|3] "" X
+ SG_ VCFRONT_crashDetectedType m0 : 20|2@1+ (1,0) [0|2] "" X
+ SG_ VCFRONT_crashState m0 : 22|2@1+ (1,0) [0|2] "" X
+ SG_ VCFRONT_crashUnlockOverrideSet m0 : 24|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_epasWakeLine m1 : 4|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_freezeEvapITerm m3 : 24|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_frunkAccessPost m0 : 62|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_frunkInteriorRelSwitch m0 : 48|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_frunkLatchStatus m0 : 3|4@1+ (1,0) [0|8] "" X
+ SG_ VCFRONT_frunkLatchType m0 : 58|2@1+ (1,0) [0|2] "" X
+ SG_ VCFRONT_hasLowRefrigerant m3 : 29|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_headlampLeftFanStatus m0 : 60|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_headlampRightFanStatus m0 : 61|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_headlightLeftVPosition m0 : 28|10@1+ (1,0) [0|1023] "ticks" X
+ SG_ VCFRONT_headlightRightVPosition m0 : 38|10@1+ (1,0) [0|1023] "ticks" X
+ SG_ VCFRONT_homelinkCommStatus m2 : 48|2@1+ (1,0) [0|3] "" X
+ SG_ VCFRONT_homelinkV2Response0 m2 : 8|8@1+ (1,0) [0|255] "" X
+ SG_ VCFRONT_homelinkV2Response1 m2 : 16|8@1+ (1,0) [0|255] "" X
+ SG_ VCFRONT_homelinkV2Response2 m2 : 24|8@1+ (1,0) [0|255] "" X
+ SG_ VCFRONT_homelinkV2Response3 m2 : 32|8@1+ (1,0) [0|255] "" X
+ SG_ VCFRONT_homelinkV2Response4 m2 : 40|8@1+ (1,0) [0|255] "" X
+ SG_ VCFRONT_hornOn m0 : 51|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_hvacPerfTestCommand m3 : 48|2@1+ (1,0) [0|2] "" X
+ SG_ VCFRONT_iBoosterStateDBG m1 : 5|3@1+ (1,0) [0|4] "" X
+ SG_ VCFRONT_iBoosterWakeLine m1 : 3|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_isActiveHeatingBattery m0 : 63|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_isColdStartRunning m3 : 30|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_isEvapOperationAllowed m3 : 25|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_isHeatPumpOilPurgeActive m3 : 31|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_maxEvapHeatRejection m3 : 8|8@1+ (65,0) [0|16575] "W" X
+ SG_ VCFRONT_minEvapHeatRejection m3 : 16|8@1+ (10,0) [0|2500] "W" X
+ SG_ VCFRONT_pressureRefrigDischarge m3 : 40|8@1+ (0.125,0) [0|31.75] "bar" X
+ SG_ VCFRONT_pressureRefrigSuction m3 : 32|7@1+ (0.125,0) [0|11.5] "bar" X
+ SG_ VCFRONT_radarHeaterState m0 : 52|3@1+ (1,0) [0|4] "" X
+ SG_ VCFRONT_railAState m5 : 7|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_railBState m5 : 8|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_refrigFillRoutineStatus m3 : 52|2@1+ (1,0) [0|3] "" X
+ SG_ VCFRONT_reverseBatteryFault m4 : 30|1@1+ (1,0) [0|1] "" X
+ SG_ VCFRONT_shortedCellFaultCounter m4 : 44|3@1+ (1,0) [0|7] "" X
+ SG_ VCFRONT_silentWakeIBSCurrent m4 : 32|12@1- (0.1,-204.7) [-409.5|0] "mA" X
+ SG_ VCFRONT_sleepCurrent m1 : 32|12@1- (0.1,-204.7) [-409.5|0] "mA" X
+ SG_ VCFRONT_tempCompTargetVoltage m4 : 3|10@1+ (0.01,9) [9|16] "V" X
+ SG_ VCFRONT_timeSpentSleeping m1 : 24|8@1+ (1,0) [0|255] "s" X
+ SG_ VCFRONT_vbatMonitorVoltage m5 : 16|12@1+ (0.00544368,0) [0|22.2864] "V" X
+ SG_ VCFRONT_vbatProt m5 : 40|12@1+ (0.00544368,0) [0|22.2919] "V" X
+ SG_ VCFRONT_vehicleStatusDBG m1 : 8|5@1+ (1,0) [0|17] "" X
+ SG_ VCFRONT_voltageDropCounter m4 : 20|4@1+ (1,0) [0|15] "" X
+ SG_ VCFRONT_voltageFloorReachedCount m4 : 24|4@1+ (1,0) [0|15] "" X
+ SG_ VCFRONT_voltageProfile m4 : 28|2@1+ (1,0) [0|3] "" X
+ SG_ VCFRONT_wiperPosition m0 : 12|3@1+ (1,0) [0|4] "" X
+ SG_ VCFRONT_wiperSpeed m0 : 8|4@1+ (1,0) [0|9] "" X
+ SG_ VCFRONT_wiperState m0 : 16|4@1+ (1,0) [0|13] "" X
+
+BO_ 850 BMS_energyStatus: 8 VEH
+ SG_ BMS_energyStatusIndex M : 0|2@1+ (1,0) [0|3] "" X
+ SG_ BMS_nominalFullPackEnergy m0 : 16|16@1+ (0.02,0) [0|1310.7] "kWh" X
+ SG_ BMS_nominalEnergyRemaining m0 : 32|16@1+ (0.02,0) [0|1310.7] "kWh" X
+ SG_ BMS_idealEnergyRemaining m0 : 48|16@1+ (0.02,0) [0|1310.7] "kWh" X
+ SG_ BMS_fullyCharged m1 : 15|1@1+ (1,0) [0|1] "" X
+ SG_ BMS_energyBuffer m1 : 16|16@1+ (0.01,0) [0|655.35] "kWh" X
+ SG_ BMS_expectedEnergyRemaining m1 : 32|16@1+ (0.02,0) [0|1310.7] "kWh" X
+ SG_ BMS_energyToChargeComplete m1 : 48|16@1+ (0.02,0) [0|1310.7] "kWh" X
+
+BO_ 594 BMS_powerAvailable: 8 VEH
+ SG_ BMS_maxRegenPower : 0|16@1+ (0.01,0) [0|655.35] "kW" X
+ SG_ BMS_maxDischargePower : 16|16@1+ (0.01,0) [0|655.35] "kW" X
+ SG_ BMS_maxStationaryHeatPower : 32|10@1+ (0.01,0) [0|10.23] "kW" X
+ SG_ BMS_powerLimitsState : 48|1@1+ (1,0) [0|1] "" X
+ SG_ BMS_hvacPowerBudget : 50|10@1+ (0.02,0) [0|20.46] "kW" X
+
+BO_ 306 BMS_hvBusStatus: 6 VEH
+ SG_ BMS_packVoltage : 0|16@1+ (0.01,0) [0|655.35] "V" X
+ SG_ BMS_packCurrent : 16|15@1- (-0.1,0) [-1638.3|1638.4] "A" X
+ SG_ BMS_currentUnfiltered : 32|16@1- (-0.05,822) [-816.35|2460.4] "A" X
+
+BO_ 818 BMS_bmbMinMax: 6 VEH
+ SG_ BMS_bmbMinMaxMultiplexer M : 0|2@1+ (1,0) [0|2] "" X
+ SG_ BMS_thermistorNumTMax m0 : 2|4@1+ (1,0) [0|15] "" X
+ SG_ BMS_thermistorNumTMin m0 : 8|4@1+ (1,0) [0|15] "" X
+ SG_ BMS_thermistorTMax m0 : 16|8@1+ (0.5,-40) [-40|87.5] "DegC" X
+ SG_ BMS_thermistorTMin m0 : 24|8@1+ (0.5,-40) [-40|87.5] "DegC" X
+ SG_ BMS_modelTMax m0 : 32|8@1+ (0.5,-40) [-40|87.5] "DegC" X
+ SG_ BMS_modelTMin m0 : 40|8@1+ (0.5,-40) [-40|87.5] "DegC" X
+ SG_ BMS_brickVoltageMax m1 : 2|12@1+ (0.002,0) [0|8.19] "V" X
+ SG_ BMS_brickVoltageMin m1 : 16|12@1+ (0.002,0) [0|8.19] "V" X
+ SG_ BMS_brickNumVoltageMax m1 : 32|7@1+ (1,1) [1|128] "" X
+ SG_ BMS_brickNumVoltageMin m1 : 40|7@1+ (1,1) [1|128] "" X
+
+BO_ 950 DI_odometerStatus: 8 VEH
+ SG_ DI_odometer : 0|32@1+ (0.001,0) [0|4294967.295] "km" X
+ SG_ DI_odometerStatusCounter : 52|4@1+ (1,0) [0|15] "" X
+ SG_ DI_odometerStatusChecksum : 56|8@1+ (1,0) [0|255] "" X
+
+BO_ 1029 VIN_info: 8 VEH
+ SG_ VIN_infoIndex M : 0|8@1+ (1,0) [0|255] "" X
+ SG_ VIN_A405 m16 : 8|56@1+ (1,0) [0|7.2057594038E+016] "" X
+ SG_ VIN_B405 m17 : 8|56@1+ (1,0) [0|7.2057594038E+016] "" X
+ SG_ VIN_C405 m18 : 8|56@1+ (1,0) [0|7.2057594038E+016] "" X
+
+
+CM_ "New-generation Model Y (Juniper), Tesla FW 2026.x. Reverse-engineered from comma route 077b771458fd542f/000000a9--5f9f91a356 (2026-09-22 16:49-17:05) against an annotated action timeline; names and enums cross-checked with the Tesla FW 2026.2 signal dataset. Covers the messages listed in dbc/used_messages.txt plus DI_state (for DashPilot). Node VEH = seen on the vehicle bus (comma bus 1, DashKit bus 1); node CH = seen ONLY on the chassis bus (comma bus 0/2, DashKit bus 0). Each message comment lists the buses it was observed on. Bytesum checksum = (id_lo + id_hi + sum of data bytes except the checksum byte) & 0xFF.";
+CM_ BO_ 585 "CHANGED. Vehicle bus only, 20 Hz. DLC 3 -> 4. Byte 0 is no longer the Tesla bytesum (0 of 19597 frames match) and no CRC-8 matched: Tesla calls it SCCM_leftStalkCrc and the firmware cannot synthesize this frame until the algorithm is known. Bits 20-31 are a new 12-bit stalk angle. SCCM_washWipeButtonStatus and SCCM_highBeamStalkStatus (bits 12-15) never left 0 in the whole log, including the wiper button press at 16:49:47.9: the wiper button now reports through VCLEFT_switchStatus.VCLEFT_swcWiperButtonState.";
+CM_ SG_ 585 SCCM_turnIndicatorStalkStatus "Enum changed: right tap (16:53:31) = 2 UP_1, left tap (16:53:34, 16:53:35) = 6 DOWN_1 (legacy DOWN_1 was 7).";
+CM_ SG_ 585 SCCM_turnIndicatorStalkAngle "Raw stalk position, 4095 = SNA. Rest ~1800, UP_1 up to 1840, DOWN_1 down to 1761.";
+CM_ BO_ 962 "Layout unchanged, vehicle + chassis bus, 20 Hz, no checksum. swcLeftScrollTicks read +1 x5 (16:49:50-16:49:59) then -1 x5 (16:50:01-16:50:09) during the wiper speed scroll. New VCLEFT_swcWiperButtonState.";
+CM_ SG_ 962 VCLEFT_swcWiperButtonState "New on Juniper. HARD_PRESS for 180 ms at 16:49:47.94, which opened the wiper menu (UI_steeringButtonMode -> WIPERS) and triggered a single wipe. Replaces SCCM_washWipeButtonStatus; no checksum/counter in this frame.";
+CM_ BO_ 1001 "Layout unchanged, vehicle + chassis bus, 2 Hz, bytesum checksum verified. DAS_wiperSpeed reads 15 while Autopilot is off and 0 while it is engaged (every 15 -> 0 edge lines up with DAS_autopilotState -> 3 and UI_wiperRequest -> AUTO), same as legacy.";
+CM_ BO_ 991 "Layout unchanged, CHASSIS BUS ONLY on Juniper (legacy: vehicle bus). 2.5 Hz. UI_activeTouchPoints = 1/2/3/4 for the taps at 16:50:16-16:50:20 / 16:50:22-16:50:25 / 16:50:27-16:50:30 / 16:50:32-16:50:34; UI_touchDetected pulses with each tap.";
+CM_ BO_ 627 "Layout unchanged, vehicle + chassis bus, 3 Hz. Verified UI_lockRequest (LOCK 16:50:47, UNLOCK 16:50:51 ... ), UI_mirrorFoldRequest (RETRACT 16:51:16, PRESENT 16:51:28), UI_wiperRequest (OFF -> AUTO -> ... -> FAST_CONTINUOUS -> OFF following the 16:49:50-16:50:09 scroll; AUTO whenever Autopilot is engaged), UI_steeringButtonMode = 6 WIPERS while the wiper menu was open (16:49:48-16:50:14). UI_remoteClosureRequest did not change for the trunk requests (they go through UI_vehicleControl2.UI_trunkRequest).";
+CM_ BO_ 947 "CHANGED: DLC 2 -> 8, vehicle + chassis bus, 2 Hz. Known bit positions unchanged: UI_gloveboxRequest held ~3 s at 16:59:10.7 and 16:59:20.9; UI_trunkRequest pulsed ~0.7 s at 17:01:28.6, 17:01:35.5, 17:01:45.0, 17:01:50.6; UI_locksPanelActive 16:51:04-16:51:12. Idle payload 80 80 04 30 00 00 a8 80: bytes 4-7 carry new, unidentified fields (FW 2026.2 adds seat fan/auto-climate, steering wheel heat, wiper heater, ...), so a transmitter must send all 8 bytes (RMW the live frame).";
+CM_ BO_ 819 "CHANGED: DLC 4 -> 5, vehicle + chassis bus, 2 Hz. Bits 0-25 unchanged (chargeEnableRequest 1, acChargeCurrentLimit 16 A, chargeTerminationPct 100 %). Bit 26 is constantly 1 (unidentified). Charge port open/close requests were not exercised in this log.";
+CM_ SG_ 819 UI_cpInletHeaterRequest "Position verified, name inferred from FW 2026.2: 0 -> 1 when the supercharger navigation started (17:02:48.7), back to 0 when it was cancelled (17:03:01.2).";
+CM_ BO_ 839 "Layout of byte 0 unchanged, vehicle bus only as 0x347 (the identical payload is mirrored on the chassis bus as 0x082). 1 Hz. Supercharger navigation 17:02:48.7 -> 17:03:01.2: byte 0 0x01 -> 0x02 (navToSupercharger) -> 0x0e (type 3 = V3) -> 0xae (preconditioning ACTIVE_HEAT + requestBatteryHeating) -> 0xaf -> 0x01. FW 2026.2 names: someValueA = UI_battPreconditionOnNavPowerReq (127 SNA, went to 0x50), someValueB = UI_battPreconditionOnNavTargetT (255 SNA, went to 0xd4), someValueC = UI_ambientTempAtDestination (-128 SNA while routing). Legacy names kept for firmware compatibility.";
+CM_ SG_ 839 UI_tripPlanChargingTargetPercent "1023 = SNA (the only value seen).";
+CM_ SG_ 839 UI_energyAtDestination "-327.68 = SNA (while routing). 55.61 kWh idle (= pack energy remaining), 53.79 kWh once the supercharger route was computed.";
+CM_ BO_ 755 "CHANGED: DLC 5 -> 8 and CHASSIS BUS ONLY on Juniper (legacy: vehicle bus). 2 Hz. Old positions verified: setpoints 22.5 degC, blowerSegment 11 AUTO, userPowerState ON; UI_hvacReqSecondRowState OFF -> HIGH 17:02:09.7, LOW 17:02:14.7, HIGH 17:02:16.7, OFF 17:02:19.7, HIGH 17:02:22.5, OFF 17:02:27.9 (rear fan). Bytes 4-6 = 00 60 00 unidentified.";
+CM_ SG_ 755 UI_hvacReqAutoBlowerLevel "New. With the fan in AUTO, the 17:00:18-17:00:29 fan adjustments stepped it 0 -> 2 -> 4 -> 2 -> 0.";
+CM_ SG_ 755 UI_hvacClimateNudgeStatus "Position verified, name inferred from FW 2026.2: 2 (OPEN_NO_NUDGE) exactly while the climate panel was open (16:52:11-16:52:55, 16:59:39-17:00:33, 17:01:57-17:02:40), 0 otherwise.";
+CM_ BO_ 820 "Layout unchanged, vehicle bus only, 2 Hz, bytesum checksum verified. UI_pedalMap CHILL -> SPORT 17:03:14.5, CHILL 17:03:18.0, SPORT 17:03:20.8, CHILL 17:03:22.6.";
+CM_ BO_ 595 "CHANGED: DLC 7 -> 8, MULTIPLEXED on byte 0 and CHASSIS BUS ONLY on Juniper (legacy: vehicle bus). Mux 0 (front vents) and mux 1 (second row) alternate at ~2 Hz each. Mux 0 bytes 1-6 keep the legacy meaning: during the driver-vent drag 16:59:47-16:59:52 (SPLIT mode) LeftLateralSplit went 200 -> 20 -> 200 (left / fully right) and LeftPositionY 200 -> 123 -> 158 (up / down); LeftPositionX stayed 100. Byte 7 holds the native lateral modes. Mux 1 was constant (c8 b6 a9 c8 00 00 00); its signal order follows FW 2026.2 and is inferred. A single-slot RMW cache can hold either mux page: check byte 0 before reusing a live frame.";
+CM_ SG_ 595 UI_ventPanelLeftLateralMode "SPLIT -> SWING 16:52:16.5 and 16:52:26.1, back to SPLIT 16:52:22.2 and 16:52:29.9.";
+CM_ SG_ 595 UI_ventPanelRightLateralMode "SINGLE -> SWING 16:52:32.3 and 16:52:37.8, back to SINGLE 16:52:35.6 and 16:52:40.2.";
+CM_ BO_ 297 "Layout unchanged, VEHICLE BUS ONLY on Juniper (DashKit manifest had bus 0). 100 Hz. SCCM_steeringAngle swept -199 .. +189 deg during the 16:52:48-16:52:53 wheel turns. Byte 0 is no longer the Tesla bytesum (renamed SCCM_steeringAngleCrc, same unknown algorithm as SCCM_leftStalkCrc). SCCM_steeringAngleValidity reads 0 throughout.";
+CM_ BO_ 280 "Layout unchanged, vehicle + chassis bus, 100 Hz, bytesum checksum verified. DI_gear enum unchanged: D 16:53:01-16:53:07 (no reverse light, speed 0), R 16:54:36-16:54:38 and 17:01:01-17:01:07 (reverse light on, negative speed), P 17:01:24.7. DI_accelPedalPos 0 .. 100 % during the 16:51:58-16:52:04 pedal presses.";
+CM_ BO_ 599 "Layout unchanged, vehicle + chassis bus, 50 Hz, bytesum checksum verified.";
+CM_ BO_ 646 "Not in dbc/used_messages.txt; added for the DashPilot mapper (layout from bus_2_tesla_party.dbc). VEHICLE BUS ONLY on Juniper, 10 Hz, bytesum checksum (DI_locStatusChecksum) verified. DI_cruiseState = 2 ENABLED 16:55:20.7-16:55:30.0 (Autopilot engagement); DI_digitalSpeed is the set speed in DI_speedUnits (KPH on this car).";
+CM_ BO_ 921 "Layout unchanged, chassis bus only (as in the DashKit manifest), 2 Hz, bytesum checksum verified. DAS_autopilotState = 3 16:55:20.7-16:55:30.0 (annotated engagement) plus later engagements at 16:55:53, 16:56:15, 16:57:57, 16:58:42, 16:59:57, 17:04:14.";
+CM_ BO_ 905 "Layout unchanged, VEHICLE BUS ONLY on Juniper (DashKit manifest had bus 0). 2.4 Hz, bytesum checksum verified. DAS_lssState is 0/1 with Autopilot off (also while driving manually) and 3 or 7 while it is engaged.";
+CM_ BO_ 605 "NOT AVAILABLE ON THIS CAR. 0x25D is 8 bytes at 10 Hz on vehicle + chassis bus (FW 2026.2: APP_trafficControl), but the payload is static (37 41 01 06 04 f0 xx 03, only byte 6 drifts 0xca-0xd1) through the yellow -> red (16:57:24-25) and red -> green (16:57:52) light changes and both stop-line approaches (16:54:55, 16:55:36). No other frame on any bus carried those transitions. The legacy signals are kept for app compatibility but decode to constants here.";
+CM_ BO_ 994 "Layout unchanged (vehicle-bus copy, DLC 7, 5 Hz). VCLEFT_turnSignalStatus blinked 16:53:35.9-16:53:38.4. 0x3E2 on the chassis bus is a different 8-byte 1 Hz frame: decode this message from the vehicle bus only.";
+CM_ BO_ 995 "CHANGED: DLC 2 -> 4, vehicle bus only, 5 Hz. Legacy bits verified (turnSignalStatus blinked 16:53:31.2-16:53:33.7, reverseLightStatus on 16:54:36-16:54:38 and 17:01:01-17:01:07). New 2-bit fields named from FW 2026.2: fasciaReverseLightStatus (13|2) reads 1 ON exactly while reversing, CHMSLLightStatus (29|2) reads 1 ON exactly while the brake light is on (field alignment inferred: bits 14 and 30 never set); bits 10 and 17 are set while the trunk is open (unidentified).";
+CM_ BO_ 737 "Layout unchanged as far as observable, vehicle + chassis bus, 62 Hz. Mux-0 wiper fields follow the wiper session (wiperSpeed 1/2/8, wiperState 4/6/7/8/9/10). No door was opened; VCFRONT_anyClosureOpen / anyDoorOpen stayed 0 even while the trunk was open (17:01:28-17:01:56; VCRIGHT_doorStatus.VCRIGHT_trunkLatchStatus and VCLEFT_liftgateStatus did report it).";
+CM_ BO_ 850 "Layout unchanged, vehicle bus only, 1.5 Hz. Mux 0: nominalFullPackEnergy 81.38 kWh, nominalEnergyRemaining 55.5 kWh at 16:56. A third mux page (index 2) now alternates with 0 and 1; not decoded.";
+CM_ BO_ 594 "Layout unchanged, vehicle bus only, 10 Hz. maxRegenPower 98 kW, maxDischargePower 293.7 kW at 16:56. Legacy BMS_inverterTQF (56|2) dropped: it overlapped BMS_hvacPowerBudget (50|10) and bits 56-63 were always 0, so neither could be checked.";
+CM_ BO_ 306 "CHANGED: DLC 8 -> 6, vehicle bus only, 100 Hz. packVoltage 381 V, packCurrent 1.9 A at 16:56. BMS_chgTimeToFull no longer fits and was removed.";
+CM_ BO_ 818 "Layout unchanged, vehicle bus only, 1 Hz. Mux 0 thermistorTMax 18.0 / TMin 17.5 degC.";
+CM_ BO_ 950 "CHANGED: DLC 4 -> 8, vehicle + chassis bus, 1 Hz. DI_odometer unchanged (3651.992 km). New counter (52|4) and bytesum checksum (56|8, verified on every frame); bits 32-51 read 0.";
+CM_ BO_ 1029 "Layout unchanged, vehicle + chassis bus, 4 Hz. Index 16 = 4 NUL bytes + WMI (3 chars), 17 = chars 4-10, 18 = chars 11-17.";
+VAL_ 585 SCCM_highBeamStalkStatus 0 "IDLE" 1 "PULL" 2 "PUSH" 3 "SNA" ;
+VAL_ 585 SCCM_washWipeButtonStatus 0 "NOT_PRESSED" 1 "1ST_DETENT" 2 "2ND_DETENT" 3 "SNA" ;
+VAL_ 585 SCCM_turnIndicatorStalkStatus 0 "IDLE" 1 "UP_0_5" 2 "UP_1" 3 "UP_1_5" 4 "UP_2" 5 "DOWN_0_5" 6 "DOWN_1" 7 "DOWN_1_5" 8 "DOWN_2" 9 "SNA" ;
+VAL_ 585 SCCM_turnIndicatorStalkAngle 4095 "SNA" ;
+VAL_ 962 VCLEFT_switchStatusIndex 0 "0" 1 "1" 2 "INVALID" ;
+VAL_ 962 VCLEFT_rightMirrorTilt 0 "STOP" 1 "DOWN" 2 "UP" 3 "RIGHT" 4 "LEFT" ;
+VAL_ 962 VCLEFT_frontSeatTrackBack 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatTrackForward 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatTiltDown 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatTiltUp 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatLiftDown 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatLiftUp 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatBackrestBack 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatBackrestForward 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatLumbarDown 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatLumbarUp 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatLumbarIn 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontSeatLumbarOut 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontBuckleSwitch 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_frontOccupancySwitch 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_rearLeftBuckleSwitch 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_rearCenterBuckleSwitch 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_rearCenterOccupancySwitch 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_rearLeftOccupancySwitch 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_rearRightOccupancySwitch 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_swcLeftTiltRight 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_swcLeftPressed 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_swcRightTiltLeft 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_swcRightTiltRight 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_swcRightPressed 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_swcLeftTiltLeft 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 962 VCLEFT_swcWiperButtonState 0 "INACTIVE" 1 "SOFT_PRESS" 2 "HARD_PRESS" 3 "FAULT" ;
+VAL_ 1001 DAS_hazardLightRequest 0 "OFF" 1 "ON" 2 "ON_FAST" 3 "SNA" ;
+VAL_ 1001 DAS_headlightRequest 0 "OFF" 1 "ON" 2 "TAIL_LIGHTS_ONLY" 3 "INVALID" ;
+VAL_ 1001 DAS_heaterRequest 0 "SNA" 1 "OFF" 2 "ON" ;
+VAL_ 1001 DAS_highLowBeamDecision 0 "UNDECIDED" 1 "OFF" 2 "ON" 3 "SNA" ;
+VAL_ 1001 DAS_highLowBeamOffReason 0 "ON" 1 "OFF_REASON_MOVING_VISION_TARGET" 2 "OFF_REASON_MOVING_RADAR_TARGET" 3 "OFF_REASON_AMBIENT_LIGHT" 4 "OFF_REASON_HEAD_LIGHT" 5 "OFF_REASON_SNA" ;
+VAL_ 1001 DAS_turnIndicatorRequest 0 "NONE" 1 "LEFT" 2 "RIGHT" 3 "CANCEL" ;
+VAL_ 1001 DAS_turnIndicatorRequestReason 0 "NONE" 1 "ACTIVE_NAV_LANE_CHANGE" 2 "ACTIVE_SPEED_LANE_CHANGE" 3 "ACTIVE_FORK" 4 "CANCEL_LANE_CHANGE" 5 "CANCEL_FORK" ;
+VAL_ 1001 DAS_wiperSpeed 0 "OFF" 1 "1" 2 "2" 3 "3" 4 "4" 5 "5" 6 "6" 7 "7" 8 "8" 9 "9" 10 "10" 11 "11" 12 "12" 13 "13" 14 "14" 15 "INVALID" ;
+VAL_ 991 UI_linkState 0 "NONE" 1 "CELL" 2 "WIFI" ;
+VAL_ 991 UI_sentryModeState 0 "OFF" 1 "IDLE" 2 "ARMED" 3 "AWARE" 4 "PANIC" 5 "QUIET" 6 "SNA" ;
+VAL_ 991 UI_userActivity 0 "IDLE" 1 "ACTIVE" ;
+VAL_ 627 UI_displayBrightnessLevel 255 "SNA" ;
+VAL_ 627 UI_domeLightSwitch 0 "OFF" 1 "ON" 2 "AUTO" ;
+VAL_ 627 UI_driveStateRequest 0 "IDLE" 1 "START" ;
+VAL_ 627 UI_frontLeftSeatHeatReq 0 "OFF" 1 "LEVEL1" 2 "LEVEL2" 3 "LEVEL3" ;
+VAL_ 627 UI_frontRightSeatHeatReq 0 "OFF" 1 "LEVEL1" 2 "LEVEL2" 3 "LEVEL3" ;
+VAL_ 627 UI_lightSwitch 0 "AUTO_SNA" 1 "ON" 2 "PARKING" 3 "OFF" ;
+VAL_ 627 UI_lockRequest 0 "IDLE" 1 "LOCK" 2 "UNLOCK" 3 "REMOTE_UNLOCK" 4 "REMOTE_LOCK" 7 "SNA" ;
+VAL_ 627 UI_mirrorFoldRequest 0 "IDLE" 1 "RETRACT" 2 "PRESENT" 3 "SNA" ;
+VAL_ 627 UI_rearCenterSeatHeatReq 0 "OFF" 1 "LEVEL1" 2 "LEVEL2" 3 "LEVEL3" ;
+VAL_ 627 UI_rearLeftSeatHeatReq 0 "OFF" 1 "LEVEL1" 2 "LEVEL2" 3 "LEVEL3" ;
+VAL_ 627 UI_rearRightSeatHeatReq 0 "OFF" 1 "LEVEL1" 2 "LEVEL2" 3 "LEVEL3" ;
+VAL_ 627 UI_remoteClosureRequest 0 "IDLE" 1 "REAR_TRUNK_MOVE" 2 "FRONT_TRUNK_MOVE" 3 "SNA" ;
+VAL_ 627 UI_remoteStartRequest 0 "IDLE" 1 "START" 4 "SNA" ;
+VAL_ 627 UI_steeringBacklightEnabled 0 "DISABLED" 1 "ENABLED" ;
+VAL_ 627 UI_steeringButtonMode 0 "OFF" 1 "STEERING_COLUMN_ADJ" 2 "MIRROR_LEFT" 3 "MIRROR_RIGHT" 4 "HEADLIGHT_LEFT" 5 "HEADLIGHT_RIGHT" 6 "WIPERS" 7 "SEATS" ;
+VAL_ 627 UI_wiperMode 0 "SNA" 1 "SERVICE" 2 "NORMAL" 3 "PARK" ;
+VAL_ 627 UI_wiperRequest 0 "SNA" 1 "OFF" 2 "AUTO" 3 "SLOW_INTERMITTENT" 4 "FAST_INTERMITTENT" 5 "SLOW_CONTINUOUS" 6 "FAST_CONTINUOUS" ;
+VAL_ 947 UI_autopilotPowerStateRequest 0 "NOMINAL" 1 "SENTRY" 2 "SUSPEND" ;
+VAL_ 947 UI_lightSwitch 0 "AUTO" 1 "ON" 2 "PARKING" 3 "OFF" 4 "SNA" ;
+VAL_ 947 UI_shorted12VCellTestMode 0 "DISABLED" 1 "SHADOW" 2 "ACTIVE" ;
+VAL_ 947 UI_summonState 0 "SNA" 1 "IDLE" 2 "PRE_PRIMED" 3 "ACTIVE" ;
+VAL_ 819 UI_acChargeCurrentLimit 127 "SNA" ;
+VAL_ 819 UI_cpInletHeaterRequest 0 "OFF" 1 "AUTO" 2 "MANUAL_OVERRIDE" ;
+VAL_ 839 UI_navSuperchargerType 0 "NONE" 1 "LOW_POWER" 2 "V2" 3 "V3" 4 "V4" ;
+VAL_ 839 UI_batteryPreconditioningState 0 "PASSIVE_HEAT" 1 "ACTIVE_HEAT" 2 "PASSIVE_COOL" 3 "ACTIVE_COOL" ;
+VAL_ 839 UI_someValueA 127 "SNA" ;
+VAL_ 839 UI_someValueB 255 "SNA" ;
+VAL_ 839 UI_someValueC -128 "SNA" ;
+VAL_ 839 UI_tripPlanChargingTargetPercent 1023 "SNA" ;
+VAL_ 839 UI_energyAtDestination -32768 "SNA" -32767 "TRIP_TOO_LONG" ;
+VAL_ 755 UI_hvacReqTempSetpointLeft 0 "LO" 26 "HI" ;
+VAL_ 755 UI_hvacReqTempSetpointRight 0 "LO" 26 "HI" ;
+VAL_ 755 UI_hvacReqAutoBlowerLevel 0 "VERY_LOW" 1 "LOW" 2 "MEDIUM" 3 "HIGH" 4 "VERY_HIGH" ;
+VAL_ 755 UI_hvacReqAirDistributionMode 0 "AUTO" 1 "MANUAL_FLOOR" 2 "MANUAL_PANEL" 3 "MANUAL_PANEL_FLOOR" 4 "MANUAL_DEFROST" 5 "MANUAL_DEFROST_FLOOR" 6 "MANUAL_DEFROST_PANEL" 7 "MANUAL_DEFROST_PANEL_FLOOR" ;
+VAL_ 755 UI_hvacReqBlowerSegment 0 "OFF" 1 "1" 2 "2" 3 "3" 4 "4" 5 "5" 6 "6" 7 "7" 8 "8" 9 "9" 10 "10" 11 "AUTO" ;
+VAL_ 755 UI_hvacReqRecirc 0 "AUTO" 1 "RECIRC" 2 "FRESH" ;
+VAL_ 755 UI_hvacReqACDisable 0 "AUTO" 1 "OFF" 2 "ON" ;
+VAL_ 755 UI_hvacReqManualDefogState 0 "NONE" 1 "DEFOG" 2 "DEFROST" ;
+VAL_ 755 UI_hvacReqUserPowerState 0 "OFF" 1 "ON" 2 "PRECONDITION" 3 "OVERHEAT_PROTECT_FANONLY" 4 "OVERHEAT_PROTECT" ;
+VAL_ 755 UI_hvacReqSecondRowState 0 "AUTO" 1 "OFF" 2 "LOW" 3 "MED" 4 "HIGH" ;
+VAL_ 755 UI_hvacReqKeepClimateOn 0 "OFF" 1 "ON" 2 "DOG" 3 "PARTY" ;
+VAL_ 755 UI_hvacClimateNudgeStatus 0 "CLOSED_NO_NUDGE" 1 "CLOSED_WITH_NUDGE" 2 "OPEN_NO_NUDGE" 3 "OPEN_WITH_NUDGE" 4 "CLOSED_WITH_EXTERIOR_NUDGE" ;
+VAL_ 820 UI_creepTorque 0 "OFF" 1 "ON" ;
+VAL_ 820 UI_limitMode 0 "NORMAL" 1 "VALET" 2 "FACTORY" 3 "SERVICE" ;
+VAL_ 820 UI_motorOnMode 0 "NORMAL" 1 "FRONT_ONLY" 2 "REAR_ONLY" ;
+VAL_ 820 UI_pedalMap 0 "CHILL" 1 "SPORT" 2 "PERFORMANCE" ;
+VAL_ 820 UI_speedLimit 255 "SNA" ;
+VAL_ 820 UI_systemPowerLimit 31 "SNA" ;
+VAL_ 820 UI_systemTorqueLimit 63 "SNA" ;
+VAL_ 820 UI_trackModeRequest 0 "IDLE" 1 "ON" 2 "OFF" ;
+VAL_ 820 UI_wasteMode 0 "NONE" 1 "PARTIAL" 2 "FULL" ;
+VAL_ 820 UI_wasteModeRegenLimit 0 "MAX" 1 "30A" 2 "10A" 3 "0A" ;
+VAL_ 595 UI_ventPanelControlRequestIndex 0 "FRONT" 1 "SECOND_ROW" ;
+VAL_ 595 UI_ventPanelLeftLateralMode 0 "SINGLE" 1 "SPLIT" 2 "SWING" ;
+VAL_ 595 UI_ventPanelRightLateralMode 0 "SINGLE" 1 "SPLIT" 2 "SWING" ;
+VAL_ 297 SCCM_steeringAngle 16383 "SNA" ;
+VAL_ 297 SCCM_steeringAngleSensorStatus 0 "OK" 1 "INIT" 2 "ERROR" 3 "ERROR_INIT" ;
+VAL_ 297 SCCM_steeringAngleValidity 0 "INVALID" 1 "VALID" 2 "INIT" 3 "SNA" ;
+VAL_ 280 DI_accelPedalPos 255 "SNA" ;
+VAL_ 280 DI_brakePedalState 0 "OFF" 1 "ON" 2 "INVALID" ;
+VAL_ 280 DI_epbRequest 0 "NO_REQUEST" 1 "PARK" 2 "UNPARK" ;
+VAL_ 280 DI_gear 0 "INVALID" 1 "P" 2 "R" 3 "N" 4 "D" 7 "SNA" ;
+VAL_ 280 DI_immobilizerState 0 "INIT_SNA" 1 "REQUEST" 2 "AUTHENTICATING" 3 "DISARMED" 4 "IDLE" 5 "RESET" 6 "FAULT" ;
+VAL_ 280 DI_keepAliveRequest 0 "NO_REQUEST" 1 "KEEP_ALIVE" ;
+VAL_ 280 DI_systemState 0 "UNAVAILABLE" 1 "IDLE" 2 "STANDBY" 3 "FAULT" 4 "ABORT" 5 "ENABLE" ;
+VAL_ 280 DI_trackModeState 0 "UNAVAILABLE" 1 "AVAILABLE" 2 "ON" ;
+VAL_ 280 DI_tractionControlMode 0 "NORMAL" 1 "SLIP_START" 2 "DEV_MODE_1" 3 "DEV_MODE_2" 4 "ROLLS_MODE" 5 "DYNO_MODE" ;
+VAL_ 599 DI_uiSpeed 255 "SNA" ;
+VAL_ 599 DI_uiSpeedUnits 0 "MPH" 1 "KPH" ;
+VAL_ 599 DI_vehicleSpeed 4095 "SNA" ;
+VAL_ 646 DI_cruiseState 0 "UNAVAILABLE" 1 "STANDBY" 2 "ENABLED" 3 "STANDSTILL" 4 "OVERRIDE" 5 "FAULT" 6 "PRE_FAULT" 7 "PRE_CANCEL" ;
+VAL_ 646 DI_speedUnits 0 "MPH" 1 "KPH" ;
+VAL_ 646 DI_autoparkState 0 "UNAVAILABLE" 1 "STANDBY" 2 "STARTED" 3 "ACTIVE" 4 "COMPLETE" 5 "PAUSED" 6 "ABORTED" 7 "RESUMED" 8 "UNPARK_COMPLETE" 9 "SELFPARK_STARTED" 15 "SNA" ;
+VAL_ 646 DI_parkBrakeState 0 "UNAVAILABLE" 1 "RELEASED" 2 "REQUESTED" 3 "APPLIED" 4 "FAULTED" 5 "PANIC_EPB" 6 "PANIC_SKID" 7 "RELEASING" 15 "SNA" ;
+VAL_ 646 DI_autopilotRequest 0 "IDLE" 1 "ACTIVATE" ;
+VAL_ 646 DI_aebState 0 "UNAVAILABLE" 1 "STANDBY" 2 "ENABLED" 3 "STANDSTILL" 4 "FAULT" 7 "SNA" ;
+VAL_ 646 DI_pmmStatus 0 "INACTIVE" 1 "ACTIVE" 2 "LOGGING_ACTIVE" 3 "SNA" ;
+VAL_ 646 DI_vehicleHoldState 0 "UNAVAILABLE" 1 "STANDBY" 2 "BLEND_IN" 3 "STANDSTILL" 4 "BLEND_OUT" 5 "PARK" 6 "FAULT" 7 "INIT" ;
+VAL_ 646 DI_rollPreventionState 0 "UNAVAILABLE" 1 "STANDBY" 2 "READY" 3 "BUILD" 4 "HOLD" 5 "PARK" 6 "FAULT" 7 "INIT" ;
+VAL_ 921 DAS_autoLaneChangeState 0 "UNAVAILABLE_DISABLED" 1 "UNAVAILABLE_NO_LANES" 2 "UNAVAILABLE_SONICS_INVALID" 3 "UNAVAILABLE_TP_FOLLOW" 4 "UNAVAILABLE_EXITING_HIGHWAY" 5 "UNAVAILABLE_VEHICLE_SPEED" 6 "AVAILABLE_ONLY_L" 7 "AVAILABLE_ONLY_R" 8 "AVAILABLE_BOTH" 9 "IN_PROGRESS_L" 10 "IN_PROGRESS_R" 11 "WAITING_FOR_SIDE_OBST_TO_PASS_L" 12 "WAITING_FOR_SIDE_OBST_TO_PASS_R" 13 "WAITING_FOR_FWD_OBST_TO_PASS_L" 14 "WAITING_FOR_FWD_OBST_TO_PASS_R" 15 "ABORT_SIDE_OBSTACLE_PRESENT_L" 16 "ABORT_SIDE_OBSTACLE_PRESENT_R" 17 "ABORT_POOR_VIEW_RANGE" 18 "ABORT_LC_HEALTH_BAD" 19 "ABORT_BLINKER_TURNED_OFF" 20 "ABORT_OTHER_REASON" 21 "UNAVAILABLE_SOLID_LANE_LINE" 22 "BLOCKED_VEH_TTC_L" 23 "BLOCKED_VEH_TTC_AND_USS_L" 24 "BLOCKED_VEH_TTC_R" 25 "BLOCKED_VEH_TTC_AND_USS_R" 26 "BLOCKED_LANE_TYPE_L" 27 "BLOCKED_LANE_TYPE_R" 28 "WAITING_HANDS_ON" 29 "ABORT_TIMEOUT" 30 "ABORT_MISSION_PLAN_INVALID" 31 "SNA" ;
+VAL_ 921 DAS_autoparkReady 0 "UNAVAILABLE" 1 "READY" ;
+VAL_ 921 DAS_autopilotHandsOnState 0 "NOT_REQD" 1 "REQD_DETECTED" 2 "REQD_NOT_DETECTED" 3 "REQD_VISUAL" 4 "REQD_CHIME_1" 5 "REQD_CHIME_2" 6 "REQD_SLOWING" 7 "REQD_STRUCK_OUT" 8 "SUSPENDED" 9 "REQD_ESCALATED_CHIME_1" 10 "REQD_ESCALATED_CHIME_2" 15 "SNA" ;
+VAL_ 921 DAS_autopilotState 0 "DISABLED" 1 "UNAVAILABLE" 2 "AVAILABLE" 3 "ACTIVE_NOMINAL" 4 "ACTIVE_RESTRICTED" 5 "ACTIVE_NAV" 6 "ACTIVE_FSD" 8 "ABORTING" 9 "ABORTED" 14 "FAULT" 15 "SNA" ;
+VAL_ 921 DAS_blindSpotRearLeft 0 "NO_WARNING" 1 "WARNING_LEVEL_1" 2 "WARNING_LEVEL_2" 3 "SNA" ;
+VAL_ 921 DAS_blindSpotRearRight 0 "NO_WARNING" 1 "WARNING_LEVEL_1" 2 "WARNING_LEVEL_2" 3 "SNA" ;
+VAL_ 921 DAS_csaState 0 "UNAVAILABLE" 1 "AVAILABLE" 2 "ENABLE" 3 "HOLD" ;
+VAL_ 921 DAS_fleetSpeedState 0 "UNAVAILABLE" 1 "AVAILABLE" 2 "ACTIVE" 3 "HOLD" ;
+VAL_ 921 DAS_forwardCollisionWarning 0 "NONE" 1 "FORWARD_COLLISION_WARNING" 3 "SNA" ;
+VAL_ 921 DAS_fusedSpeedLimit 0 "UNKNOWN_SNA" 31 "NONE" ;
+VAL_ 921 DAS_heaterState 0 "OFF_SNA" 1 "ON" ;
+VAL_ 921 DAS_laneDepartureWarning 0 "NONE" 1 "LEFT_WARNING" 2 "RIGHT_WARNING" 3 "LEFT_WARNING_SEVERE" 4 "RIGHT_WARNING_SEVERE" 5 "SNA" ;
+VAL_ 921 DAS_sideCollisionAvoid 0 "NONE" 1 "AVOID_LEFT" 2 "AVOID_RIGHT" 3 "SNA" ;
+VAL_ 921 DAS_sideCollisionInhibit 0 "NO_INHIBIT" 1 "INHIBIT" ;
+VAL_ 921 DAS_sideCollisionWarning 0 "NONE" 1 "WARN_LEFT" 2 "WARN_RIGHT" 3 "WARN_LEFT_RIGHT" ;
+VAL_ 921 DAS_suppressSpeedWarning 0 "Do_Not_Suppress" 1 "Suppress_Speed_Warning" ;
+VAL_ 921 DAS_visionOnlySpeedLimit 0 "UNKNOWN_SNA" 31 "NONE" ;
+VAL_ 905 DAS_ACC_report 0 "TARGET_NONE" 1 "TARGET_CIPV" 2 "TARGET_IN_FRONT_OF_CIPV" 3 "TARGET_MCVL" 4 "TARGET_MCVR" 5 "TARGET_CUTIN" 6 "TARGET_TYPE_STOP_SIGN" 7 "TARGET_TYPE_TRAFFIC_LIGHT" 8 "TARGET_TYPE_IPSO" 9 "TARGET_TYPE_FAULT" 10 "CSA" 11 "LC_HANDS_ON_REQD_STRUCK_OUT" 12 "LC_EXTERNAL_STATE_ABORTING" 13 "LC_EXTERNAL_STATE_ABORTED" 14 "LC_EXTERNAL_STATE_ACTIVE_RESTRICTED" 15 "RADAR_OBJ_ONE" 16 "RADAR_OBJ_TWO" 17 "TARGET_MCP" 18 "FLEET_SPEEDS" 19 "MCVLR_DPP" 20 "MCVLR_IN_PATH" 21 "CIPV_CUTTING_OUT" 22 "RADAR_OBJ_FIVE" 23 "CAMERA_ONLY" 24 "BEHAVIOR_REPORT" ;
+VAL_ 905 DAS_accSpeedLimit 0 "NONE" 1023 "SNA" ;
+VAL_ 905 DAS_activationFailureStatus 0 "IDLE" 1 "FAILED_1" 2 "FAILED_2" ;
+VAL_ 905 DAS_driverInteractionLevel 0 "DRIVER_INTERACTING" 1 "DRIVER_NOT_INTERACTING" 2 "CONTINUED_DRIVER_NOT_INTERACTING" ;
+VAL_ 905 DAS_longCollisionWarning 0 "NONE" 1 "VEHICLE_UNKNOWN" 2 "PEDESTRIAN" 3 "IPSO" 4 "STOPSIGN_STOPLINE" 5 "TFL_STOPLINE" 6 "VEHICLE_CIPV" 7 "VEHICLE_CUTIN" 8 "VEHICLE_MCVL" 9 "VEHICLE_MCVL2" 10 "VEHICLE_MCVR" 11 "VEHICLE_MCVR2" 12 "VEHICLE_CIPV2" 15 "SNA" ;
+VAL_ 905 DAS_lssState 0 "FAULT" 1 "LDW" 2 "LKA" 3 "ELK" 4 "MONITOR" 5 "BLINDSPOT" 6 "ABORT" 7 "OFF" ;
+VAL_ 905 DAS_pmmCameraFaultReason 0 "NO_FAULT" 1 "BLOCKED_FRONT" 2 "INVALID_MIA" ;
+VAL_ 905 DAS_pmmLoggingRequest 0 "FALSE" 1 "TRUE" ;
+VAL_ 905 DAS_pmmObstacleSeverity 0 "NONE" 1 "IMMINENT_REAR" 2 "IMMINENT_FRONT" 3 "BRAKE_REQUEST" 4 "CRASH_REAR" 5 "CRASH_FRONT" 6 "ACCEL_LIMIT" 7 "SNA" ;
+VAL_ 905 DAS_pmmRadarFaultReason 0 "NO_FAULT" 1 "BLOCKED_FRONT" 2 "INVALID_MIA" ;
+VAL_ 905 DAS_pmmSysFaultReason 0 "NONE" 1 "DAS_DISABLED" 2 "SPEED" 3 "DI_FAULT" 4 "STEERING_ANGLE_RATE" 5 "DISABLED_BY_USER" 6 "ROAD_TYPE" 7 "BRAKE_PEDAL_INHIBIT" ;
+VAL_ 905 DAS_pmmUltrasonicsFaultReason 0 "NO_FAULT" 1 "BLOCKED_FRONT" 2 "BLOCKED_REAR" 3 "BLOCKED_BOTH" 4 "INVALID_MIA" ;
+VAL_ 905 DAS_ppOffsetDesiredRamp 128 "PP_NO_OFFSET" ;
+VAL_ 905 DAS_radarTelemetry 0 "IDLE" 1 "NORMAL" 2 "URGENT" ;
+VAL_ 905 DAS_robState 0 "INHIBITED" 1 "MEASURE" 2 "ACTIVE" 3 "MAPLESS" ;
+VAL_ 605 DAS_trafficLightColor 0 "NONE" 1 "RED" 2 "GREEN" 3 "YELLOW" ;
+VAL_ 994 VCLEFT_FLMapLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_FRMapLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_RLMapLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_RRMapLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_brakeLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_brakeTrailerLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_fogTrailerLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_leftTurnTrailerLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_rightTrnTrailerLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_tailLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_tailTrailerLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_turnSignalStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 994 VCLEFT_trailerDetected 0 "SNA" 1 "FAULT" 2 "DETECTED" 3 "NOT_DETECTED" ;
+VAL_ 995 VCRIGHT_brakeLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 995 VCRIGHT_tailLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 995 VCRIGHT_turnSignalStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 995 VCRIGHT_reverseLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 995 VCRIGHT_rearFogLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 995 VCRIGHT_fasciaReverseLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 995 VCRIGHT_CHMSLLightStatus 0 "OFF" 1 "ON" 2 "FAULT" 3 "SNA" ;
+VAL_ 737 VCFRONT_statusIndex 0 "BODY_CONTROLS" 1 "VEHICLE_AND_RAILS" 2 "HOMELINK" 3 "REFRIGERANT_SYSTEM" 4 "LV_BATTERY_DEBUG" 5 "INVALID" ;
+VAL_ 737 VCFRONT_frunkLatchStatus 0 "SNA" 1 "OPENED" 2 "CLOSED" 3 "CLOSING" 4 "OPENING" 5 "AJAR" 6 "TIMEOUT" 7 "DEFAULT" 8 "FAULT" ;
+VAL_ 737 VCFRONT_wiperSpeed 0 "SNA" 1 "OFF" 2 "1" 3 "2" 4 "3" 5 "4" 6 "5" 7 "LOW" 8 "HIGH" 9 "NARROW" ;
+VAL_ 737 VCFRONT_wiperPosition 0 "SNA" 1 "SERVICE" 2 "DEPRESSED_PARK" 3 "DELAYED_REST" 4 "WIPING" ;
+VAL_ 737 VCFRONT_wiperState 0 "SNA" 1 "SERVICE" 2 "FAULT" 3 "DELAYED_REST" 4 "PARK" 5 "WASH" 6 "MOMENTARY_WIPE" 7 "INTERMITTENT_HIGH" 8 "INTERMITTENT_LOW" 9 "CONT_FAST" 10 "CONT_SLOW" 11 "INT_AUTO_LOW" 12 "INT_AUTO_HIGH" 13 "NARROW_WIPE" ;
+VAL_ 737 VCFRONT_crashDetectedType 0 "NONE" 1 "MINOR" 2 "SEVERE" ;
+VAL_ 737 VCFRONT_crashState 0 "IDLE" 1 "MINOR" 2 "SEVERE" ;
+VAL_ 737 VCFRONT_airCompressorStatus 0 "OFF" 1 "ON" 2 "TURNING_OFF" 3 "TURNING_ON" 4 "FAULT" 5 "RETRY_AVAILABLE" 7 "SNA" ;
+VAL_ 737 VCFRONT_iBoosterStateDBG 0 "OFF" 1 "ON" 2 "GOING_DOWN" 3 "WRITING_DATA_SHUTDOWN" 4 "FORCE_OFF" ;
+VAL_ 737 VCFRONT_vehicleStatusDBG 0 "INIT" 1 "LOW_POWER_STANDBY" 2 "SILENT_WAKE" 3 "BATTERY_POST_WAKE" 4 "SYSTEM_CHECKS" 5 "SLEEP_SHUTDOWN" 6 "SLEEP_STANDBY" 7 "LV_SHUTDOWN" 8 "LV_AWAKE" 9 "HV_UP_STANDBY" 10 "ACCESSORY" 11 "ACCESSORY_PLUS" 12 "CONDITIONING" 13 "DRIVE" 14 "CRASH" 15 "OTA" 16 "TURN_ON_RAILS" 17 "RESET" ;
+VAL_ 737 VCFRONT_batterySMState 0 "INIT" 1 "CHARGE" 2 "DISCHARGE" 3 "STANDBY" 4 "RESISTANCE_ESTIMATION" 5 "OTA_STANDBY" 6 "DISCONNECTED_BATTERY_TEST" 7 "FAULT" ;
+VAL_ 737 VCFRONT_homelinkCommStatus 0 "SNA" 1 "OFF" 2 "ON" 3 "FAULT" ;
+VAL_ 737 VCFRONT_pressureRefrigSuction 127 "SNA" ;
+VAL_ 737 VCFRONT_pressureRefrigDischarge 255 "SNA" ;
+VAL_ 737 VCFRONT_AS8510Voltage 4095 "SNA" ;
+VAL_ 850 BMS_energyBuffer 255 "SNA" ;
+VAL_ 850 BMS_energyToChargeComplete 2047 "SNA" ;
+VAL_ 850 BMS_expectedEnergyRemaining 2047 "SNA" ;
+VAL_ 850 BMS_idealEnergyRemaining 2047 "SNA" ;
+VAL_ 850 BMS_nominalEnergyRemaining 2047 "SNA" ;
+VAL_ 850 BMS_nominalFullPackEnergy 2047 "SNA" ;
+VAL_ 594 BMS_powerLimitsState 0 "NOT_CALCULATED_FOR_DRIVE" 1 "CALCULATED_FOR_DRIVE" ;
+VAL_ 306 BMS_currentUnfiltered -16384 "SNA" ;
+VAL_ 306 BMS_packCurrent -16384 "SNA" ;
+VAL_ 818 BMS_bmbMinMaxMultiplexer 0 "THERM_MUX0" 1 "VOLT_MUX1" 2 "END" ;
+VAL_ 950 DI_odometer 4294967295 "SNA" ;
