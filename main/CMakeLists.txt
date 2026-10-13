@@ -19,6 +19,11 @@ if(CONFIG_DASHKIT_BTHOME)
     list(APPEND BTHOME_SRCS "bthome/bthome.c")
 endif()
 
+set(DEBUG_SRCS "")
+if(CONFIG_DASHKIT_SERIAL_CMDS)
+    list(APPEND DEBUG_SRCS "debug/serial_cmds.c")
+endif()
+
 idf_component_register(
     SRCS
         "main.c"
@@ -41,6 +46,7 @@ idf_component_register(
         "ble/ble_appchan.c"
         ${TESLA_SRCS}
         ${BTHOME_SRCS}
+        ${DEBUG_SRCS}
     INCLUDE_DIRS
         "."
         "can"
@@ -50,6 +56,7 @@ idf_component_register(
         "ble"
         "bthome"
         "tesla"
+        "debug"
     REQUIRES
         driver
         esp_adc

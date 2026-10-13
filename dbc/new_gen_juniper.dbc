@@ -201,6 +201,9 @@ BO_ 947 UI_vehicleControl2: 8 VEH
  SG_ UI_userPresent : 18|1@1+ (1,0) [0|1] "" X
  SG_ UI_windowRequest : 20|3@1+ (1,0) [0|4] "" X
 
+BO_ 1016 UI_driverAssistControl: 8 CH
+ SG_ UI_isaSpeedingChimeMuted : 63|1@1+ (1,0) [0|1] "" X
+
 BO_ 819 UI_chargeRequest: 5 VEH
  SG_ UI_openChargePortDoorRequest : 0|1@1+ (1,0) [0|1] "" X
  SG_ UI_closeChargePortDoorRequest : 1|1@1+ (1,0) [0|1] "" X
