@@ -377,6 +377,7 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
     if (opcode != VC_CMD_ENTER_PAIRING &&
         opcode != VC_CMD_REAR_FAN_TOGGLE &&
         opcode != VC_CMD_MIRROR_DIP_TOGGLE &&
+        opcode != VC_CMD_CHIME_MUTE &&
         opcode != VC_CMD_REBOOT &&
         !is_config_opcode(opcode) &&
         !find_command(opcode)) {
