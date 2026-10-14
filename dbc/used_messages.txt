@@ -28,7 +28,7 @@ UI_status2            0 decode   # multi-finger: UI_activeTouchPoints (chassis o
 UI_vehicleControl     1 decode   # vehicle control: closure / mirror fold
 UI_vehicleControl2    1 decode   # vehicle control: glovebox (RMW)
 UI_chargeRequest      1 decode   # vehicle control: charge port open/close (RMW)
-UI_driverAssistControl 0 decode  # chime mute: UI_isaSpeedingChimeMuted (RMW, bit 63)
+UI_driverAssistControl 1 decode  # chime mute: UI_isaSpeedingChimeMuted (RMW, bit 63, vehicle bus)
 UI_tripPlanning       1 decode   # battery preheat: faked supercharger nav (raw RMW)
 UI_hvacRequest        0 decode   # rear AC fan toggle; also app: climate setpoint (chassis only on Juniper)
 UI_powertrainControl  1 decode   # sport kick-down: UI_pedalMap (RMW)

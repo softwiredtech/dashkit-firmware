@@ -5,6 +5,7 @@
 
 #include "esp_log.h"
 #include "esp_system.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -87,7 +88,7 @@ static injector_t s_rear_fan   = { "rear fan",   HVAC_BUS, "UI_hvacRequest",    
 static injector_t s_mirror_dip = { "mirror dip", VC_BUS,   "UI_vehicleControl", "UI_mirrorDipOnReverse",    MIRROR_DIP_INJECT_MS, 0, -1, -1 };
 
 #define CHIME_MUTE_INJECT_MS 50
-static injector_t s_chime_mute = { "chime mute", BODY_BUS, "UI_driverAssistControl", "UI_isaSpeedingChimeMuted", CHIME_MUTE_INJECT_MS, 0, -1, -1 };
+static injector_t s_chime_mute = { "chime mute", VC_BUS, "UI_driverAssistControl", "UI_isaSpeedingChimeMuted", CHIME_MUTE_INJECT_MS, 0, -1, -1 };
 
 // Config opcodes are not CAN frames: they route to an automation's on_config.
 static bool is_config_opcode(uint8_t opcode)
@@ -254,10 +255,37 @@ static void injector_step_force(injector_t *inj)
     can_send_live(inj->bus, inj->msg, inj->sig, inj->target, false);  // no-op until a live frame is seen
 }
 
+#define CHIME_MUTE_NVS_NAMESPACE "chime_mute"
+#define CHIME_MUTE_NVS_KEY       "en"
+
+static void chime_mute_save(bool enable)
+{
+    nvs_handle_t nvs;
+    if (nvs_open(CHIME_MUTE_NVS_NAMESPACE, NVS_READWRITE, &nvs) != ESP_OK) return;
+    if (nvs_set_u8(nvs, CHIME_MUTE_NVS_KEY, enable ? 1 : 0) == ESP_OK) {
+        nvs_commit(nvs);
+    }
+    nvs_close(nvs);
+}
+
+// Re-enable the mute on boot (survives a power-cycle before the app connects).
+static void chime_mute_load(void)
+{
+    nvs_handle_t nvs;
+    if (nvs_open(CHIME_MUTE_NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) return;
+    uint8_t enabled = 0;
+    if (nvs_get_u8(nvs, CHIME_MUTE_NVS_KEY, &enabled) == ESP_OK && enabled) {
+        s_chime_mute.target = 1;
+        ESP_LOGI(TAG, "chime mute: restored ON from NVS");
+    }
+    nvs_close(nvs);
+}
+
 void vehicle_control_force_chime_mute(bool enable, int bus)
 {
     if (bus >= 0) s_chime_mute.bus = (uint8_t)bus;
     s_chime_mute.target = enable ? 1 : -1;
+    chime_mute_save(enable);
     double cur;
     bool live = can_get(s_chime_mute.bus, s_chime_mute.msg, s_chime_mute.sig, &cur, false) == ESP_OK;
     ESP_LOGI(TAG, "chime mute: %s, bus=%u, live=%d", enable ? "ON" : "off", s_chime_mute.bus, live);
@@ -334,6 +362,7 @@ esp_err_t vehicle_control_init(void)
     if (!s_queue) {
         return ESP_ERR_NO_MEM;
     }
+    chime_mute_load();
     xTaskCreatePinnedToCore(vehicle_control_task, "veh_ctrl", 4096, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(inject_task, "vc_inject", 4096, NULL, 5, NULL, 0);
     ESP_LOGI(TAG, "vehicle control initialized (%u commands)", (unsigned)VC_COMMAND_COUNT);
