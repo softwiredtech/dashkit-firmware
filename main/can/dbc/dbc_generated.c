@@ -170,6 +170,8 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_acChargeCurrentLimit", 8, 7, 0, 1.0, 0.0, -1, -1 },
     { "UI_chargeTerminationPct", 16, 10, 0, 0.1, 0.0, -1, -1 },
     { "UI_cpInletHeaterRequest", 36, 2, 0, 1.0, 0.0, -1, -1 },
+    // ---- UI_driverAssistControl (0x3F8) ----
+    { "UI_isaSpeedingChimeMuted", 63, 1, 0, 1.0, 0.0, -1, -1 },
     // ---- UI_tripPlanning (0x347) ----
     { "UI_tripPlanningActive", 0, 1, 0, 1.0, 0.0, -1, -1 },
     { "UI_navToSupercharger", 1, 1, 0, 1.0, 0.0, -1, -1 },
@@ -211,18 +213,18 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_powertrainControlChecksum", 56, 8, 0, 1.0, 0.0, -1, -1 },
     // ---- UI_ventPanelControlRequest (0x253) ----
     { "UI_ventPanelControlRequestIndex", 0, 8, 0, 1.0, 0.0, -1, -1 },
-    { "UI_ventPanelLeftPositionX", 8, 8, 0, 0.5, 0.0, 197, 0 },
-    { "UI_vent2RLeftPositionX", 8, 8, 0, 0.5, 0.0, 197, 1 },
-    { "UI_ventPanelLeftPositionY", 16, 8, 0, 0.5, 0.0, 197, 0 },
-    { "UI_vent2RLeftPositionY", 16, 8, 0, 0.5, 0.0, 197, 1 },
-    { "UI_ventPanelLeftLateralSplit", 24, 8, 0, 0.5, 0.0, 197, 0 },
-    { "UI_vent2RRightPositionX", 24, 8, 0, 0.5, 0.0, 197, 1 },
-    { "UI_ventPanelRightPositionX", 32, 8, 0, 0.5, 0.0, 197, 0 },
-    { "UI_vent2RRightPositionY", 32, 8, 0, 0.5, 0.0, 197, 1 },
-    { "UI_ventPanelRightPositionY", 40, 8, 0, 0.5, 0.0, 197, 0 },
-    { "UI_ventPanelRightLateralSplit", 48, 8, 0, 0.5, 0.0, 197, 0 },
-    { "UI_ventPanelLeftLateralMode", 56, 2, 0, 1.0, 0.0, 197, 0 },
-    { "UI_ventPanelRightLateralMode", 58, 2, 0, 1.0, 0.0, 197, 0 },
+    { "UI_ventPanelLeftPositionX", 8, 8, 0, 0.5, 0.0, 198, 0 },
+    { "UI_vent2RLeftPositionX", 8, 8, 0, 0.5, 0.0, 198, 1 },
+    { "UI_ventPanelLeftPositionY", 16, 8, 0, 0.5, 0.0, 198, 0 },
+    { "UI_vent2RLeftPositionY", 16, 8, 0, 0.5, 0.0, 198, 1 },
+    { "UI_ventPanelLeftLateralSplit", 24, 8, 0, 0.5, 0.0, 198, 0 },
+    { "UI_vent2RRightPositionX", 24, 8, 0, 0.5, 0.0, 198, 1 },
+    { "UI_ventPanelRightPositionX", 32, 8, 0, 0.5, 0.0, 198, 0 },
+    { "UI_vent2RRightPositionY", 32, 8, 0, 0.5, 0.0, 198, 1 },
+    { "UI_ventPanelRightPositionY", 40, 8, 0, 0.5, 0.0, 198, 0 },
+    { "UI_ventPanelRightLateralSplit", 48, 8, 0, 0.5, 0.0, 198, 0 },
+    { "UI_ventPanelLeftLateralMode", 56, 2, 0, 1.0, 0.0, 198, 0 },
+    { "UI_ventPanelRightLateralMode", 58, 2, 0, 1.0, 0.0, 198, 0 },
     // ---- DI_systemStatus (0x118) ----
     { "DI_systemStatusChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
     { "DI_systemStatusCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
@@ -266,21 +268,22 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_vehicleControl", 0x273, 8, 1, 93, 39, DBC_CKSUM_NONE, -1, -1 },
     { "UI_vehicleControl2", 0x3B3, 8, 1, 132, 23, DBC_CKSUM_NONE, -1, -1 },
     { "UI_chargeRequest", 0x333, 5, 1, 155, 6, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_tripPlanning", 0x347, 8, 1, 161, 10, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_hvacRequest", 0x2F3, 8, 0, 171, 13, DBC_CKSUM_NONE, -1, -1 },
-    { "UI_powertrainControl", 0x334, 8, 1, 184, 13, DBC_CKSUM_TESLA_BYTESUM, 196, 195 },
-    { "UI_ventPanelControlRequest", 0x253, 8, 0, 197, 13, DBC_CKSUM_NONE, -1, -1 },
-    { "DI_systemStatus", 0x118, 8, 0, 210, 14, DBC_CKSUM_TESLA_BYTESUM, 210, 211 },
-    { "DAS_status2", 0x389, 8, 1, 224, 17, DBC_CKSUM_TESLA_BYTESUM, 240, 239 },
+    { "UI_driverAssistControl", 0x3F8, 8, 1, 161, 1, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_tripPlanning", 0x347, 8, 1, 162, 10, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_hvacRequest", 0x2F3, 8, 0, 172, 13, DBC_CKSUM_NONE, -1, -1 },
+    { "UI_powertrainControl", 0x334, 8, 1, 185, 13, DBC_CKSUM_TESLA_BYTESUM, 197, 196 },
+    { "UI_ventPanelControlRequest", 0x253, 8, 0, 198, 13, DBC_CKSUM_NONE, -1, -1 },
+    { "DI_systemStatus", 0x118, 8, 0, 211, 14, DBC_CKSUM_TESLA_BYTESUM, 211, 212 },
+    { "DAS_status2", 0x389, 8, 1, 225, 17, DBC_CKSUM_TESLA_BYTESUM, 241, 240 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {
     0x3DF, 0x2F3, 0x253, 0x118, 0x257, 0x399, 0x25D,
 };
 static const uint16_t hw_filter_bus1_ids[] = {
-    0x249, 0x3C2, 0x3E9, 0x273, 0x3B3, 0x333, 0x347, 0x334, 0x129, 0x389, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405, 0x286,
+    0x249, 0x3C2, 0x3E9, 0x273, 0x3B3, 0x333, 0x3F8, 0x347, 0x334, 0x129, 0x389, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405, 0x286,
 };
 const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {
     { hw_filter_bus0_ids, 7 },
-    { hw_filter_bus1_ids, 20 },
+    { hw_filter_bus1_ids, 21 },
 };

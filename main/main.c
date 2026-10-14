@@ -6,6 +6,9 @@
 #include "dbc.h"
 #include "automation_manager.h"
 #include "vehicle_control.h"
+#ifdef CONFIG_DASHKIT_SERIAL_CMDS
+#include "serial_cmds.h"
+#endif
 #include "mcp251xfd.h"
 #include "ble_server.h"
 #include "ble_ota.h"
@@ -164,6 +167,9 @@ void app_main(void)
     ESP_ERROR_CHECK(automation_manager_init());
 
     ESP_ERROR_CHECK(vehicle_control_init());
+#ifdef CONFIG_DASHKIT_SERIAL_CMDS
+    serial_cmds_start();
+#endif
 
     // CAN interface 0 (MCP2518FD)
     mcp251xfd_config_t can0_cfg = {

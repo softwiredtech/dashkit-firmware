@@ -2,6 +2,7 @@
 
 #include "esp_err.h"
 #include <stdint.h>
+#include <stdbool.h>
 
 // High-level Tesla vehicle-control commands.
 //
@@ -85,6 +86,8 @@ typedef enum {
     VC_CMD_AC_SWING_INTENSITY = 0x4D,
     // Config only, not persisted. value is ignored.
     VC_CMD_AC_SWING_TOGGLE = 0x4E,
+
+    VC_CMD_CHIME_MUTE = 0x4F,  // keep UI_isaSpeedingChimeMuted forced while enabled
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.
@@ -94,3 +97,5 @@ esp_err_t vehicle_control_init(void);
 // from the BLE GATT write callback. Returns ESP_ERR_INVALID_ARG for an unknown
 // opcode, ESP_ERR_INVALID_STATE if not initialized.
 esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value);
+
+void vehicle_control_force_chime_mute(bool enable, int bus);  // bus < 0 = keep current

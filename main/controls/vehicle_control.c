@@ -5,6 +5,7 @@
 
 #include "esp_log.h"
 #include "esp_system.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -13,6 +14,7 @@ static const char *TAG = "veh_ctrl";
 
 #define VC_BUS    1
 #define HVAC_BUS  0   // UI_hvacRequest is chassis-only on Juniper
+#define BODY_BUS  0   // Juniper's glovebox and mirror fold only act on the chassis-bus copy
 
 #define VC_BURST_REPEATS   10
 #define VC_BURST_GAP_MS    20
@@ -40,24 +42,26 @@ typedef struct {
     const char *sig;
     bool        rmw;
     uint16_t    hold_ms;
+    uint8_t     bus;
+    uint16_t    gap_ms;
 } vc_command_t;
 
 static const vc_command_t s_commands[] = {
-    { VC_CMD_CLOSURE,           "UI_vehicleControl",  "UI_remoteClosureRequest",       false, 0    },
-    { VC_CMD_MIRROR_FOLD,       "UI_vehicleControl",  "UI_mirrorFoldRequest",          false, 0    },
-    { VC_CMD_GLOVEBOX,          "UI_vehicleControl2", "UI_gloveboxRequest",            true,  400  },
-    { VC_CMD_CHARGE_PORT_OPEN,  "UI_chargeRequest",   "UI_openChargePortDoorRequest",  true,  1000 },
-    { VC_CMD_CHARGE_PORT_CLOSE, "UI_chargeRequest",   "UI_closeChargePortDoorRequest", true,  1000 },
+    { VC_CMD_CLOSURE,           "UI_vehicleControl",  "UI_remoteClosureRequest",       false, 0,    VC_BUS,   VC_BURST_GAP_MS },
+    { VC_CMD_MIRROR_FOLD,       "UI_vehicleControl",  "UI_mirrorFoldRequest",          true,  600,  BODY_BUS, 300 },
+    { VC_CMD_GLOVEBOX,          "UI_vehicleControl2", "UI_gloveboxRequest",            true,  3000, BODY_BUS, 500 },
+    { VC_CMD_CHARGE_PORT_OPEN,  "UI_chargeRequest",   "UI_openChargePortDoorRequest",  true,  1000, VC_BUS,   VC_RMW_GAP_MS },
+    { VC_CMD_CHARGE_PORT_CLOSE, "UI_chargeRequest",   "UI_closeChargePortDoorRequest", true,  1000, VC_BUS,   VC_RMW_GAP_MS },
 };
 #define VC_COMMAND_COUNT  (sizeof(s_commands) / sizeof(s_commands[0]))
 
 // Juniper opens the rear trunk through UI_vehicleControl2.UI_trunkRequest (the
 // car's UI pulses it ~0.7 s); UI_remoteClosureRequest never moves for it.
 static const vc_command_t s_trunk_command =
-    { VC_CMD_CLOSURE, "UI_vehicleControl2", "UI_trunkRequest", true, 700 };
+    { VC_CMD_CLOSURE, "UI_vehicleControl2", "UI_trunkRequest", true, 1000, BODY_BUS, 50 };
 // Frunk by analogy with the trunk (unverified on Juniper: no frunk event recorded).
 static const vc_command_t s_frunk_command =
-    { VC_CMD_CLOSURE, "UI_vehicleControl", "UI_frunkRequest", true, 700 };
+    { VC_CMD_CLOSURE, "UI_vehicleControl", "UI_frunkRequest", true, 700, VC_BUS, VC_RMW_GAP_MS };
 
 typedef struct {
     uint8_t  opcode;
@@ -82,6 +86,9 @@ typedef struct {
 
 static injector_t s_rear_fan   = { "rear fan",   HVAC_BUS, "UI_hvacRequest",    "UI_hvacReqSecondRowState", REAR_FAN_INJECT_MS,   0, -1, -1 };
 static injector_t s_mirror_dip = { "mirror dip", VC_BUS,   "UI_vehicleControl", "UI_mirrorDipOnReverse",    MIRROR_DIP_INJECT_MS, 0, -1, -1 };
+
+#define CHIME_MUTE_INJECT_MS 50
+static injector_t s_chime_mute = { "chime mute", VC_BUS, "UI_driverAssistControl", "UI_isaSpeedingChimeMuted", CHIME_MUTE_INJECT_MS, 0, -1, -1 };
 
 // Config opcodes are not CAN frames: they route to an automation's on_config.
 static bool is_config_opcode(uint8_t opcode)
@@ -112,8 +119,8 @@ static void send_burst(const vc_command_t *cmd, uint16_t value)
 {
     ESP_LOGI(TAG, "cmd 0x%02X -> %s.%s = %u", cmd->opcode, cmd->msg, cmd->sig, value);
     for (int i = 0; i < VC_BURST_REPEATS; i++) {
-        can_send(VC_BUS, cmd->msg, cmd->sig, value, false);
-        vTaskDelay(pdMS_TO_TICKS(VC_BURST_GAP_MS));
+        can_send(cmd->bus, cmd->msg, cmd->sig, value, false);
+        vTaskDelay(pdMS_TO_TICKS(cmd->gap_ms));
     }
 }
 
@@ -122,32 +129,32 @@ static void send_burst(const vc_command_t *cmd, uint16_t value)
 // With no live frame seen yet (quiet bus), fall back to from-scratch frames.
 static void send_rmw_pulse(const vc_command_t *cmd, uint16_t value)
 {
-    int hold_reps = cmd->hold_ms / VC_RMW_GAP_MS;
+    int hold_reps = cmd->hold_ms / cmd->gap_ms;
     if (hold_reps < 1) {
         hold_reps = 1;
     }
 
     can_frame_t probe;
-    bool live = (can_frame_live(VC_BUS, cmd->msg, &probe) == ESP_OK);
+    bool live = (can_frame_live(cmd->bus, cmd->msg, &probe) == ESP_OK);
     if (!live) {
         ESP_LOGW(TAG, "%s: no live %s frame, sending from scratch",
                  cmd->sig, cmd->msg);
     }
 
     for (int i = 0; i < hold_reps; i++) {
-        esp_err_t err = live ? can_send_live(VC_BUS, cmd->msg, cmd->sig, value, false)
-                             : can_send(VC_BUS, cmd->msg, cmd->sig, value, false);
+        esp_err_t err = live ? can_send_live(cmd->bus, cmd->msg, cmd->sig, value, false)
+                             : can_send(cmd->bus, cmd->msg, cmd->sig, value, false);
         if (err != ESP_OK) return;
-        vTaskDelay(pdMS_TO_TICKS(VC_RMW_GAP_MS));
+        vTaskDelay(pdMS_TO_TICKS(cmd->gap_ms));
     }
     for (int i = 0; i < VC_RMW_RELEASE_REPS; i++) {
-        esp_err_t err = live ? can_send_live(VC_BUS, cmd->msg, cmd->sig, 0, false)
-                             : can_send(VC_BUS, cmd->msg, cmd->sig, 0, false);
+        esp_err_t err = live ? can_send_live(cmd->bus, cmd->msg, cmd->sig, 0, false)
+                             : can_send(cmd->bus, cmd->msg, cmd->sig, 0, false);
         if (err != ESP_OK) break;
-        vTaskDelay(pdMS_TO_TICKS(VC_RMW_GAP_MS));
+        vTaskDelay(pdMS_TO_TICKS(cmd->gap_ms));
     }
-    ESP_LOGI(TAG, "%s.%s pulse (val=%u, held %ums, released, live=%d)",
-             cmd->msg, cmd->sig, value, cmd->hold_ms, live);
+    ESP_LOGI(TAG, "%s.%s pulse (val=%u, bus=%u, held %ums every %ums, released, live=%d)",
+             cmd->msg, cmd->sig, value, cmd->bus, cmd->hold_ms, cmd->gap_ms, live);
 }
 
 static void rear_fan_toggle(void)
@@ -237,6 +244,53 @@ static void injector_step(injector_t *inj)
     can_send_live(inj->bus, inj->msg, inj->sig, target, false);
 }
 
+// Unlike injector_step, never auto-stops on the car's value: the CID re-sends
+// UI_driverAssistControl every frame, so we keep overriding it while enabled.
+static void injector_step_force(injector_t *inj)
+{
+    if (inj->target < 0) return;
+    inj->elapsed_ms += INJECT_TICK_MS;
+    if (inj->elapsed_ms < inj->period_ms) return;
+    inj->elapsed_ms = 0;
+    can_send_live(inj->bus, inj->msg, inj->sig, inj->target, false);  // no-op until a live frame is seen
+}
+
+#define CHIME_MUTE_NVS_NAMESPACE "chime_mute"
+#define CHIME_MUTE_NVS_KEY       "en"
+
+static void chime_mute_save(bool enable)
+{
+    nvs_handle_t nvs;
+    if (nvs_open(CHIME_MUTE_NVS_NAMESPACE, NVS_READWRITE, &nvs) != ESP_OK) return;
+    if (nvs_set_u8(nvs, CHIME_MUTE_NVS_KEY, enable ? 1 : 0) == ESP_OK) {
+        nvs_commit(nvs);
+    }
+    nvs_close(nvs);
+}
+
+// Re-enable the mute on boot (survives a power-cycle before the app connects).
+static void chime_mute_load(void)
+{
+    nvs_handle_t nvs;
+    if (nvs_open(CHIME_MUTE_NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) return;
+    uint8_t enabled = 0;
+    if (nvs_get_u8(nvs, CHIME_MUTE_NVS_KEY, &enabled) == ESP_OK && enabled) {
+        s_chime_mute.target = 1;
+        ESP_LOGI(TAG, "chime mute: restored ON from NVS");
+    }
+    nvs_close(nvs);
+}
+
+void vehicle_control_force_chime_mute(bool enable, int bus)
+{
+    if (bus >= 0) s_chime_mute.bus = (uint8_t)bus;
+    s_chime_mute.target = enable ? 1 : -1;
+    chime_mute_save(enable);
+    double cur;
+    bool live = can_get(s_chime_mute.bus, s_chime_mute.msg, s_chime_mute.sig, &cur, false) == ESP_OK;
+    ESP_LOGI(TAG, "chime mute: %s, bus=%u, live=%d", enable ? "ON" : "off", s_chime_mute.bus, live);
+}
+
 static void inject_task(void *arg)
 {
     (void)arg;
@@ -247,6 +301,7 @@ static void inject_task(void *arg)
             s_mirror_dip.target = -1;
         }
         injector_step(&s_mirror_dip);
+        injector_step_force(&s_chime_mute);
         vTaskDelay(pdMS_TO_TICKS(INJECT_TICK_MS));
     }
 }
@@ -269,6 +324,10 @@ static void vehicle_control_task(void *arg)
         }
         if (req.opcode == VC_CMD_MIRROR_DIP_TOGGLE) {
             mirror_dip_toggle();
+            continue;
+        }
+        if (req.opcode == VC_CMD_CHIME_MUTE) {
+            vehicle_control_force_chime_mute(req.value != 0, -1);
             continue;
         }
         if (req.opcode == VC_CMD_REBOOT) {
@@ -303,6 +362,7 @@ esp_err_t vehicle_control_init(void)
     if (!s_queue) {
         return ESP_ERR_NO_MEM;
     }
+    chime_mute_load();
     xTaskCreatePinnedToCore(vehicle_control_task, "veh_ctrl", 4096, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(inject_task, "vc_inject", 4096, NULL, 5, NULL, 0);
     ESP_LOGI(TAG, "vehicle control initialized (%u commands)", (unsigned)VC_COMMAND_COUNT);

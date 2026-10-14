@@ -27,4 +27,13 @@ menu "DashKit"
         help
             Passive scan for BTHome v2 advertisements (Shelly BLU buttons),
             mapping button events to vehicle controls. Work in progress.
+
+    config DASHKIT_SERIAL_CMDS
+        bool "Serial test commands over USB (debug only)"
+        depends on ESP_CONSOLE_USB_SERIAL_JTAG
+        default n
+        help
+            Reads test commands (glovebox pulse, live frame dump, app opcodes)
+            from the USB Serial/JTAG console. Build with sdkconfig.serial_cmds,
+            never in a release.
 endmenu
