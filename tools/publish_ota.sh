@@ -11,8 +11,13 @@
 # Requires: gsutil (Google Cloud SDK), shasum.
 #
 # Usage:
-#   tools/publish_ota.sh <version> [path-to-bin]
+#   tools/publish_ota.sh [--track legacy|juniper] <version> [path-to-bin]
 #   e.g. tools/publish_ota.sh 0.0.2 build/dashkit-firmware.bin
+#        tools/publish_ota.sh --track juniper 0.4.2
+#
+# Each car has its own release track (storage folder + manifest); the app reads
+# the manifest of the car selected in its settings. legacy (default) is the
+# original dashkit/ folder that every older app build reads.
 #
 set -euo pipefail
 
@@ -20,20 +25,31 @@ set -euo pipefail
 # 0.1.3 live in the old xreport-f792c.appspot.com bucket, which apps built
 # before the move still read.
 BUCKET="dashkit-connect.firebasestorage.app"
-PREFIX="dashkit"
 
-# These MUST match the tokens baked into the apps + committed manifest:
-#   android: FirmwareUpdateRepository.MANIFEST_URL
-#   ios:     FirmwareUpdateRepository.manifestURL (FirmwareUpdateManager.swift)
-#   firmware: ota/manifest.json (url field)
+# These MUST match the tokens baked into the apps + committed manifests (the
+# same tokens are used on every track):
+#   android: FirmwareUpdateRepository manifest URLs
+#   ios:     FirmwareUpdateRepository manifest URLs (FirmwareUpdateManager.swift)
+#   firmware: ota/<track manifest> (url field)
 MANIFEST_TOKEN="68bcc03a-3951-454d-8f35-f5ab06c0ed0a"
 BIN_TOKEN="684a672c-53cd-48a4-a325-50e25b807b0b"
+
+TRACK="legacy"
+if [[ "${1:-}" == "--track" ]]; then
+  TRACK="${2:-}"
+  shift 2
+fi
+case "$TRACK" in
+  legacy)  PREFIX="dashkit";         MANIFEST="ota/manifest.json" ;;
+  juniper) PREFIX="dashkit-juniper"; MANIFEST="ota/juniper/manifest.json" ;;
+  *) echo "unknown track: $TRACK (legacy|juniper)" >&2; exit 1 ;;
+esac
 
 VERSION="${1:-}"
 BIN="${2:-build/dashkit-firmware.bin}"
 
 if [[ -z "$VERSION" ]]; then
-  echo "usage: $0 <version> [path-to-bin]" >&2
+  echo "usage: $0 [--track legacy|juniper] <version> [path-to-bin]" >&2
   exit 1
 fi
 if [[ ! -f "$BIN" ]]; then
@@ -52,7 +68,9 @@ gcloud storage cp "$BIN" "gs://${BUCKET}/${PREFIX}/${BIN_NAME}" \
     --custom-metadata="firebaseStorageDownloadTokens=${BIN_TOKEN}"
 
 # Regenerate the manifest for this release.
-cat > "$(dirname "$0")/../ota/manifest.json" <<EOF
+MANIFEST_PATH="$(dirname "$0")/../${MANIFEST}"
+mkdir -p "$(dirname "$MANIFEST_PATH")"
+cat > "$MANIFEST_PATH" <<EOF
 {
   "version": "${VERSION}",
   "url": "${BIN_URL}",
@@ -62,10 +80,10 @@ cat > "$(dirname "$0")/../ota/manifest.json" <<EOF
 EOF
 
 echo "Uploading manifest -> gs://${BUCKET}/${PREFIX}/manifest.json"
-gcloud storage cp "$(dirname "$0")/../ota/manifest.json" "gs://${BUCKET}/${PREFIX}/manifest.json" \
+gcloud storage cp "$MANIFEST_PATH" "gs://${BUCKET}/${PREFIX}/manifest.json" \
     --content-type=application/json \
     --custom-metadata="firebaseStorageDownloadTokens=${MANIFEST_TOKEN}"
 
 echo
-echo "Published ${VERSION} (sha256=${SHA})."
+echo "Published ${VERSION} on the ${TRACK} track (sha256=${SHA})."
 echo "Manifest URL: https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/${PREFIX}%2Fmanifest.json?alt=media&token=${MANIFEST_TOKEN}"
