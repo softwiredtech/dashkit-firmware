@@ -48,6 +48,8 @@ static const esp_partition_t *s_update_partition = NULL;
 static uint32_t s_fw_size = 0;
 static uint32_t s_received = 0;
 static bool s_ota_in_progress = false;
+static uint16_t s_owner_handle = BLE_HS_CONN_HANDLE_NONE;
+static bool s_reboot_pending = false;
 static uint32_t s_last_progress_notify = 0;
 
 // BLE handles
@@ -58,7 +60,7 @@ static uint16_t s_ota_status_val_handle;
 // ---------------------------------------------------------------------------
 static void send_status(uint8_t code, const uint8_t *payload, size_t payload_len)
 {
-    uint16_t conn = ble_server_get_conn_handle();
+    uint16_t conn = s_owner_handle;
     if (conn == BLE_HS_CONN_HANDLE_NONE) return;
 
     uint8_t buf[6];
@@ -101,6 +103,7 @@ static void ota_cleanup(void)
     s_received = 0;
     s_ota_in_progress = false;
     s_last_progress_notify = 0;
+    s_owner_handle = BLE_HS_CONN_HANDLE_NONE;
 }
 
 static void reboot_timer_cb(void *arg)
@@ -119,11 +122,6 @@ static bool handle_begin(const uint8_t *data, uint16_t len)
         ESP_LOGE(TAG, "Begin command too short");
         send_error(0x01);
         return false;
-    }
-
-    if (s_ota_in_progress) {
-        ESP_LOGW(TAG, "OTA already in progress, aborting previous");
-        ota_cleanup();
     }
 
     s_fw_size = data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24);
@@ -224,6 +222,7 @@ static void handle_data(const uint8_t *data, uint16_t len)
             return;
         }
 
+        s_reboot_pending = true;
         s_ota_in_progress = false;
         ESP_LOGI(TAG, "OTA successful, rebooting in 1s...");
 
@@ -255,6 +254,10 @@ static int ota_ctrl_access(uint16_t conn_handle, uint16_t attr_handle,
         return BLE_ATT_ERR_REQ_NOT_SUPPORTED;
     }
 
+    if (!ble_server_can_write(conn_handle)) {
+        return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+    }
+
     uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
     if (len == 0) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
 
@@ -264,11 +267,20 @@ static int ota_ctrl_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (buf[0]) {
     case OTA_CMD_BEGIN:
+        // Both phones may start an update, but neither can replace a live one.
+        if (s_ota_in_progress || s_reboot_pending) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        s_owner_handle = conn_handle;
         if (!handle_begin(buf, copy_len)) {
+            ota_cleanup();
             return BLE_ATT_ERR_UNLIKELY;
         }
         break;
     case OTA_CMD_ABORT:
+        if (s_ota_in_progress && !ble_ota_is_owner(conn_handle)) {
+            return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+        }
         handle_abort();
         break;
     default:
@@ -288,6 +300,17 @@ static int ota_data_access(uint16_t conn_handle, uint16_t attr_handle,
 
     if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
         return BLE_ATT_ERR_REQ_NOT_SUPPORTED;
+    }
+
+    if (!ble_server_can_write(conn_handle)) {
+        return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+    }
+
+    if (!s_ota_in_progress) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (!ble_ota_is_owner(conn_handle)) {
+        return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
     }
 
     uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
@@ -367,16 +390,24 @@ const struct ble_gatt_svc_def *ble_ota_get_service_def(void)
 esp_err_t ble_ota_init(void)
 {
     s_ota_in_progress = false;
+    s_owner_handle = BLE_HS_CONN_HANDLE_NONE;
+    s_reboot_pending = false;
     ESP_LOGI(TAG, "BLE OTA module initialized");
     return ESP_OK;
 }
 
-void ble_ota_on_disconnect(void)
+void ble_ota_on_disconnect(uint16_t conn_handle)
 {
-    if (s_ota_in_progress) {
-        ESP_LOGW(TAG, "BLE disconnected during OTA, aborting");
+    if (ble_ota_is_owner(conn_handle)) {
+        ESP_LOGW(TAG, "OTA owner disconnected or became read-only, aborting");
         ota_cleanup();
     }
+}
+
+bool ble_ota_is_owner(uint16_t conn_handle)
+{
+    return s_ota_in_progress && conn_handle != BLE_HS_CONN_HANDLE_NONE
+           && conn_handle == s_owner_handle;
 }
 
 bool ble_ota_is_in_progress(void)

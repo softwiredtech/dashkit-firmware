@@ -85,6 +85,12 @@ typedef enum {
     VC_CMD_AC_SWING_INTENSITY = 0x4D,
     // Config only, not persisted. value is ignored.
     VC_CMD_AC_SWING_TOGGLE = 0x4E,
+
+    // --- BLE connection role ---
+    // Handled in the BLE layer, never queued or persisted. Exactly two bytes:
+    // [0x4F][1=read-only, 0=read/write]. Applies only to the sender.
+    // Both peers may write unless they opt into read-only mode.
+    VC_CMD_BLE_READ_ONLY = 0x4F,
 } vehicle_control_opcode_t;
 
 // Create the command queue and worker task. Call once at startup.

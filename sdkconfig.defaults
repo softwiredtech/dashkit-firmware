@@ -36,9 +36,9 @@ CONFIG_BT_NIMBLE_MAX_CCCDS=16
 # Controller BLE activity budget. ESP32-S3 sources the C3 controller Kconfig,
 # so BT_CTRL_BLE_MAX_ACT IS available here; it counts connections + scan + sync
 # + adv combined (~828 B/instance). Baseline is peripheral advertising (1);
-# 8 leaves 7 connection slots — up to 6 phone/Mac peripherals plus the Tesla
-# central — comfortably above the host BT_NIMBLE_MAX_CONNECTIONS=6 (max 9 on
-# S3), so the controller is never the binding constraint.
+# 8 leaves room above the two app connections + Tesla central + optional scan.
+# Keep the host pool at 6 for headroom during disconnect/reconnect transitions
+# (the app server separately limits itself to two connections).
 CONFIG_BT_CTRL_BLE_MAX_ACT=8
 
 # Tesla BLE (vehicle-command) client: CENTRAL role for connect → VCSEC

@@ -70,7 +70,7 @@ esp_err_t ble_appchan_init(void);
 // The GATT blob for the app-channel service, appended into s_gatt_svcs[].
 const struct ble_gatt_svc_def *ble_appchan_get_service_def(void);
 
-// Push a Tesla status frame to the subscribed (active) phone. Safe to call from
+// Push a Tesla status frame to all subscribed phones. Safe to call from
 // any task once the stack is synced. `fault_detail` is ignored unless
 // `link_state == TESLA_LINK_ENROLLMENT_FAULT`.
 //

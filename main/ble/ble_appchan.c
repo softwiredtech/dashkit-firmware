@@ -74,6 +74,10 @@ static int app_cmd_access(uint16_t conn_handle, uint16_t attr_handle,
         return BLE_ATT_ERR_REQ_NOT_SUPPORTED;
     }
 
+    if (!ble_server_can_write(conn_handle)) {
+        return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+    }
+
     uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
     if (len == 0) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -209,17 +213,9 @@ void ble_appchan_report_status(uint8_t link_state, uint8_t presence, uint8_t loc
     }
     memcpy(s_last_frame, frame, sizeof(frame));
 
-    // The DashKit sits in the car trim and is driven by one phone at a time, so
-    // the status notify targets only the single "active" connection (the one
-    // subscribed to the CAN stream, ble_server's s_active_handle). Fan-out to
-    // every subscribed phone is intentionally out of scope.
-    uint16_t conn = ble_server_get_conn_handle();
-    if (conn == BLE_HS_CONN_HANDLE_NONE || s_app_status_val_handle == 0) {
-        return;
-    }
-
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(s_last_frame, sizeof(s_last_frame));
-    if (om != NULL) {
-        ble_gatts_notify_custom(conn, s_app_status_val_handle, om);
+    // NimBLE uses app_status_access to build a notification for each subscriber.
+    // App status subscriptions are independent of CAN subscriptions.
+    if (s_app_status_val_handle != 0) {
+        ble_gatts_chr_updated(s_app_status_val_handle);
     }
 }
