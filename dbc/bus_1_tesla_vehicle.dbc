@@ -115,24 +115,24 @@ BO_ 322 VCLEFT_liftgateStatus: 8 VEH
  SG_ VCLEFT_liftgateStrutDutyCycle m1 : 3|8@1- (1,0) [-100|100] "%" X
  SG_ VCLEFT_liftgateUIChimeRequest m0 : 18|3@1+ (1,0) [0|4] "" X
 
-BO_ 537 VCSEC_TPMSData: 5 CH
- SG_ VCSEC_TPMSDataIndex M : 0|2@1+ (1,0) [0|3] ""  Receiver
- SG_ VCSEC_TPMSBatVoltage0 m0 : 24|8@1+ (0.01,1.5) [1.5|4.04] "V" X
- SG_ VCSEC_TPMSBatVoltage1 m1 : 24|8@1+ (0.01,1.5) [1.5|4.04] "V" X
- SG_ VCSEC_TPMSBatVoltage2 m2 : 24|8@1+ (0.01,1.5) [1.5|4.04] "V" X
- SG_ VCSEC_TPMSBatVoltage3 m3 : 24|8@1+ (0.01,1.5) [1.5|4.04] "V" X
- SG_ VCSEC_TPMSLocation0 m0 : 32|3@1+ (1,0) [0|4] "" X
- SG_ VCSEC_TPMSLocation1 m1 : 32|3@1+ (1,0) [0|4] "" X
- SG_ VCSEC_TPMSLocation2 m2 : 32|3@1+ (1,0) [0|4] "" X
- SG_ VCSEC_TPMSLocation3 m3 : 32|3@1+ (1,0) [0|4] "" X
- SG_ VCSEC_TPMSPressure0 m0 : 8|8@1+ (0.025,0) [0|6.35] "bar" X
- SG_ VCSEC_TPMSPressure1 m1 : 8|8@1+ (0.025,0) [0|6.35] "bar" X
- SG_ VCSEC_TPMSPressure2 m2 : 8|8@1+ (0.025,0) [0|6.35] "bar" X
- SG_ VCSEC_TPMSPressure3 m3 : 8|8@1+ (0.025,0) [0|6.35] "bar" X
- SG_ VCSEC_TPMSTemperature0 m0 : 16|8@1+ (1,-40) [-40|214] "C" X
- SG_ VCSEC_TPMSTemperature1 m1 : 16|8@1+ (1,-40) [-40|214] "C" X
- SG_ VCSEC_TPMSTemperature2 m2 : 16|8@1+ (1,-40) [-40|214] "C" X
- SG_ VCSEC_TPMSTemperature3 m3 : 16|8@1+ (1,-40) [-40|214] "C" X
+BO_ 537 VCSEC_TPMSData: 7 CH
+ SG_ VCSEC_TPMSDataIndex M : 0|3@1+ (1,0) [0|5] ""  Receiver
+ SG_ VCSEC_TPMSPressureFL m5 : 16|8@1+ (0.025,0) [0|6.375] "bar" X
+ SG_ VCSEC_TPMSPressureFR m5 : 24|8@1+ (0.025,0) [0|6.375] "bar" X
+ SG_ VCSEC_TPMSPressureRL m5 : 32|8@1+ (0.025,0) [0|6.375] "bar" X
+ SG_ VCSEC_TPMSPressureRR m5 : 40|8@1+ (0.025,0) [0|6.375] "bar" X
+ SG_ VCSEC_TPMSPressure0 m0 : 16|8@1+ (0.05,-1) [-1|11.75] "bar" X
+ SG_ VCSEC_TPMSPressure1 m1 : 16|8@1+ (0.05,-1) [-1|11.75] "bar" X
+ SG_ VCSEC_TPMSPressure2 m2 : 16|8@1+ (0.05,-1) [-1|11.75] "bar" X
+ SG_ VCSEC_TPMSPressure3 m3 : 16|8@1+ (0.05,-1) [-1|11.75] "bar" X
+ SG_ VCSEC_TPMSTemperature0 m0 : 24|8@1+ (1,-40) [-40|215] "C" X
+ SG_ VCSEC_TPMSTemperature1 m1 : 24|8@1+ (1,-40) [-40|215] "C" X
+ SG_ VCSEC_TPMSTemperature2 m2 : 24|8@1+ (1,-40) [-40|215] "C" X
+ SG_ VCSEC_TPMSTemperature3 m3 : 24|8@1+ (1,-40) [-40|215] "C" X
+ SG_ VCSEC_TPMSBatVoltage0 m0 : 32|8@1+ (0.01,1.5) [1.5|4.04] "V" X
+ SG_ VCSEC_TPMSBatVoltage1 m1 : 32|8@1+ (0.01,1.5) [1.5|4.04] "V" X
+ SG_ VCSEC_TPMSBatVoltage2 m2 : 32|8@1+ (0.01,1.5) [1.5|4.04] "V" X
+ SG_ VCSEC_TPMSBatVoltage3 m3 : 32|8@1+ (0.01,1.5) [1.5|4.04] "V" X
 
 BO_ 1066 VCSEC_TPMSConnectionData: 8 VEH
  SG_ VCSEC_TPMSConnectionTypeCurrent0 : 11|2@1+ (1,0) [0|2] "" X
