@@ -181,8 +181,8 @@ static int gear(void)
     return can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) == ESP_OK ? (int)g : -1;
 }
 
-// Pop one door latch. Builds the frame from the live VCSEC_requests bytes (or
-// from scratch on a quiet bus), sets that door's ClosureRequest + RequestReason
+// Pop one door latch. Builds a zero frame (never the car's live bytes, which
+// may carry other requests), sets that door's ClosureRequest + RequestReason
 // and repeats at the car's own cadence; the car's zero frames act as release.
 static void door_unlatch(uint16_t door)
 {
@@ -197,16 +197,17 @@ static void door_unlatch(uint16_t door)
     // to standby (PRND disappears from the screen) DI_gear no longer reads P,
     // so a "must be P" gate would block exactly the case this is for.
     int g = gear();
-    if (g == GEAR_REVERSE || g == GEAR_NEUTRAL || g == GEAR_DRIVE) {
-        ESP_LOGW(TAG, "door unlatch %u ignored: in gear (%d)", door, g);
+    double kph = 0;
+    can_get(GEAR_BUS, "DI_speed", "DI_vehicleSpeed", &kph, true);
+    if (g == GEAR_REVERSE || g == GEAR_NEUTRAL || g == GEAR_DRIVE || kph > 0.5) {
+        ESP_LOGW(TAG, "door unlatch %u ignored: gear %d, %.1f kph", door, g, kph);
         return;
     }
     dbc_msg_t m = dbc_msg("VCSEC_requests");
     dbc_sig_t sc = dbc_sig(m, kClosure[door]), sr = dbc_sig(m, kReason[door]);
     if (sc < 0 || sr < 0) return;
     can_frame_t f;
-    if (can_frame_live(VC_BUS, "VCSEC_requests", &f) != ESP_OK &&
-        can_frame_init("VCSEC_requests", &f) != ESP_OK) return;
+    if (can_frame_init("VCSEC_requests", &f) != ESP_OK) return;
     dbc_pack(f.data, sc, CLOSURE_OPEN);
     dbc_pack(f.data, sr, REASON_RKE);
     ESP_LOGI(TAG, "door unlatch %u", door);

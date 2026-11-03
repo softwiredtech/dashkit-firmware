@@ -36,7 +36,7 @@ VCSEC_requests        1 decode   # door unlatch: VCSEC_*ClosureRequest + *Reques
 # ---- App-forwarded messages on the chassis bus (bus 0) ----
 SCCM_steeringAngleSensor  0 filter  # app: steering angle
 DI_systemStatus           0 decode  # app: gear; mirror dip reads DI_gear
-DI_speed                  0 filter  # app: speed
+DI_speed                  0 decode  # app: speed; door unlatch: DI_vehicleSpeed gate
 DAS_status                0 filter  # app: blind spot / speed limit / lane+collision warn
 DAS_status2               0 decode  # app: ADAS state; wiper-off gate reads DAS_lssState
 DAS_road                  0 filter  # app: traffic light color / stop line dist

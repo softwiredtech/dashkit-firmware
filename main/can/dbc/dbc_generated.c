@@ -246,6 +246,12 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "DI_proximity", 46, 1, 0, 1.0, 0.0, -1, -1 },
     { "DI_keepAliveRequest", 47, 1, 0, 1.0, 0.0, -1, -1 },
     { "DI_trackModeState", 48, 2, 0, 1.0, 0.0, -1, -1 },
+    // ---- DI_speed (0x257) ----
+    { "DI_speedChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
+    { "DI_speedCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
+    { "DI_vehicleSpeed", 12, 12, 0, 0.08, -40.0, -1, -1 },
+    { "DI_uiSpeed", 24, 8, 0, 1.0, 0.0, -1, -1 },
+    { "DI_uiSpeedUnits", 32, 1, 0, 1.0, 0.0, -1, -1 },
     // ---- DAS_status2 (0x389) ----
     { "DAS_accSpeedLimit", 0, 10, 0, 0.2, 0.0, -1, -1 },
     { "DAS_pmmObstacleSeverity", 10, 3, 0, 1.0, 0.0, -1, -1 },
@@ -280,7 +286,8 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_ventPanelControlRequest", 0x253, 7, 1, 191, 7, DBC_CKSUM_NONE, -1, -1 },
     { "VCSEC_requests", 0x1F9, 8, 1, 198, 19, DBC_CKSUM_NONE, -1, -1 },
     { "DI_systemStatus", 0x118, 8, 0, 217, 14, DBC_CKSUM_TESLA_BYTESUM, 217, 218 },
-    { "DAS_status2", 0x389, 8, 0, 231, 17, DBC_CKSUM_TESLA_BYTESUM, 247, 246 },
+    { "DI_speed", 0x257, 8, 0, 231, 5, DBC_CKSUM_TESLA_BYTESUM, 231, 232 },
+    { "DAS_status2", 0x389, 8, 0, 236, 17, DBC_CKSUM_TESLA_BYTESUM, 252, 251 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {

@@ -33,8 +33,8 @@ typedef struct {
     int16_t  counter_sig;  // g_dbc_signals index, or -1
 } dbc_message_t;
 
-#define DBC_MESSAGE_COUNT 14
-#define DBC_SIGNAL_COUNT  248
+#define DBC_MESSAGE_COUNT 15
+#define DBC_SIGNAL_COUNT  253
 
 extern const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT];
 extern const dbc_signal_t  g_dbc_signals[DBC_SIGNAL_COUNT];
