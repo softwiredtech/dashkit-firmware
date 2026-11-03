@@ -17,6 +17,8 @@ typedef enum {
     MULTI_FINGER_ACTION_REAR_FAN    = 7,
     MULTI_FINGER_ACTION_MIRROR_DIP  = 8,
     MULTI_FINGER_ACTION_AC_SWING    = 9,
+    MULTI_FINGER_ACTION_UNLATCH_FL  = 10,  // 10..13: door unlatch FL, FR, RL, RR
+    MULTI_FINGER_ACTION_UNLATCH_RR  = 13,
 } multi_finger_action_t;
 
 #define MULTI_FINGER_MIN_FINGERS  3

@@ -31,6 +31,7 @@ UI_tripPlanning       1 decode   # battery preheat: faked supercharger nav (raw 
 UI_hvacRequest        1 decode   # rear AC fan toggle; also app: climate setpoint
 UI_powertrainControl  1 decode   # sport kick-down: UI_pedalMap (RMW)
 UI_ventPanelControlRequest 1 decode  # ac swing: UI_ventPanelLeftPositionX (RMW)
+VCSEC_requests        1 decode   # door unlatch: VCSEC_*ClosureRequest + *RequestReason (RMW)
 
 # ---- App-forwarded messages on the chassis bus (bus 0) ----
 SCCM_steeringAngleSensor  0 filter  # app: steering angle
@@ -51,3 +52,6 @@ BMS_bmbMinMax             1 filter  # app: pack temps
 DI_odometerStatus         1 filter  # app: odometer
 VIN_info                  1 filter  # app: VIN assembly (muxed VIN_A/B/C405 by VIN_infoIndex)
 VCSEC_TPMSData           1 filter  # app: tyre pressure + temp per wheel (mux 0-3 per sensor, mux 5 all four)
+VCLEFT_doorStatus         1 filter  # app: front/rear left door latch state
+VCRIGHT_doorStatus        1 filter  # app: front/rear right door + trunk latch state
+VCLEFT_liftgateStatus     1 filter  # app: powered trunk state (mux 0) + position in degrees (mux 1)

@@ -1,6 +1,7 @@
 #include "can_manager.h"
 #include "can_filter.h"
 #include "automation_manager.h"
+#include "vehicle_control.h"
 #include "dbc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -29,6 +30,7 @@ static void on_frame_received(const can_tagged_frame_t *frame, void *user_ctx)
     dbc_observe_frame(frame);
     // Automations run before the BLE filter so they see all raw traffic.
     automation_manager_on_frame(frame);
+    vehicle_control_on_frame(frame);
     // Drop non-matching frames at the source so the bridge task's batching
     // timeout reflects "no more *matching* frames" rather than "no more
     // frames at all". This avoids holding onto a matching frame while we

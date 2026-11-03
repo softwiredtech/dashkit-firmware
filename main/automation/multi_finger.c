@@ -144,6 +144,10 @@ static void fire_action(uint8_t fingers, uint8_t action)
         ESP_LOGI(TAG, "%u-finger tap -> AC swing toggle", fingers);
         vehicle_control_submit(VC_CMD_AC_SWING_TOGGLE, 0);
         break;
+    case MULTI_FINGER_ACTION_UNLATCH_FL ... MULTI_FINGER_ACTION_UNLATCH_RR:
+        ESP_LOGI(TAG, "%u-finger tap -> door unlatch %u", fingers, action - MULTI_FINGER_ACTION_UNLATCH_FL);
+        vehicle_control_submit(VC_CMD_DOOR_UNLATCH, action - MULTI_FINGER_ACTION_UNLATCH_FL);
+        break;
     default:
         break;
     }

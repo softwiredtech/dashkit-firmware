@@ -211,6 +211,26 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "UI_ventPanelRightPositionX", 32, 8, 0, 0.5, 0.0, -1, -1 },
     { "UI_ventPanelRightPositionY", 40, 8, 0, 0.5, 0.0, -1, -1 },
     { "UI_ventPanelRightLateralSplit", 48, 8, 0, 0.5, 0.0, -1, -1 },
+    // ---- VCSEC_requests (0x1F9) ----
+    { "VCSEC_chargePortRequest", 0, 2, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_presentHandles", 4, 1, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_frontLeftClosureRequest", 5, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_frontRightClosureRequest", 8, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_rearLeftClosureRequest", 11, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_rearRightClosureRequest", 14, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_rearTrunkClosureRequest", 17, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_frontLeftRequestReason", 20, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_frontRightRequestReason", 23, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_rearLeftRequestReason", 26, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_rearRightRequestReason", 29, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_rearTrunkRequestReason", 32, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_rdMapDumpRequested", 35, 1, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_driveAttemptedWithoutAuth", 36, 4, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_closeAllStatus", 41, 2, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_snapshotRequested", 43, 4, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_chargeportRequestReason", 47, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_frontTrunkClosureRequest", 51, 3, 0, 1.0, 0.0, -1, -1 },
+    { "VCSEC_frontTrunkRequestReason", 54, 3, 0, 1.0, 0.0, -1, -1 },
     // ---- DI_systemStatus (0x118) ----
     { "DI_systemStatusChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
     { "DI_systemStatusCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
@@ -258,17 +278,18 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_hvacRequest", 0x2F3, 5, 1, 167, 11, DBC_CKSUM_NONE, -1, -1 },
     { "UI_powertrainControl", 0x334, 8, 1, 178, 13, DBC_CKSUM_TESLA_BYTESUM, 190, 189 },
     { "UI_ventPanelControlRequest", 0x253, 7, 1, 191, 7, DBC_CKSUM_NONE, -1, -1 },
-    { "DI_systemStatus", 0x118, 8, 0, 198, 14, DBC_CKSUM_TESLA_BYTESUM, 198, 199 },
-    { "DAS_status2", 0x389, 8, 0, 212, 17, DBC_CKSUM_TESLA_BYTESUM, 228, 227 },
+    { "VCSEC_requests", 0x1F9, 8, 1, 198, 19, DBC_CKSUM_NONE, -1, -1 },
+    { "DI_systemStatus", 0x118, 8, 0, 217, 14, DBC_CKSUM_TESLA_BYTESUM, 217, 218 },
+    { "DAS_status2", 0x389, 8, 0, 231, 17, DBC_CKSUM_TESLA_BYTESUM, 247, 246 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {
     0x129, 0x118, 0x257, 0x399, 0x389, 0x25D,
 };
 static const uint16_t hw_filter_bus1_ids[] = {
-    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x334, 0x253, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405, 0x219,
+    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x334, 0x253, 0x1F9, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405, 0x219, 0x102, 0x103, 0x142,
 };
 const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {
     { hw_filter_bus0_ids, 6 },
-    { hw_filter_bus1_ids, 21 },
+    { hw_filter_bus1_ids, 25 },
 };
