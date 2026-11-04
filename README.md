@@ -1,45 +1,53 @@
 # DashKit Firmware
 
-Firmware for **DashKit**, an ESP32-S3 CAN-to-BLE bridge for Tesla vehicles. DashKit sits on the car's chassis and vehicle CAN buses, streams live data to the [DashPilot](https://github.com/softwiredtech/dashpilot) app over Bluetooth Low Energy, and sends CAN commands for vehicle controls and on-device automations.
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/naTZgwVqvA)
+![Version](https://img.shields.io/badge/version-0.3.1-brightgreen)
+![ESP32-S3](https://img.shields.io/badge/ESP32--S3-ESP--IDF%205.4-E7352C?logo=espressif&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-## Features
+Firmware for **DashKit**, an ESP32-S3 controller for Tesla vehicles. DashKit plugs into the car's CAN buses so you can **control the car**, run **automations** on the device, and feed **live vehicle data** to the [DashPilot](https://github.com/softwiredtech/dashpilot) app.
 
-### Live data for DashPilot
+- 🎛️ **[Vehicle controls](#vehicle-controls)**: open the frunk or glovebox, fold the mirrors, preheat the battery and more, from your phone or a gesture on the center screen
+- ⚡ **[Automations](#automations)**: behaviours that run on DashKit itself, even with no phone connected
+- 📊 **[Live data for DashPilot](#live-data-for-dashpilot)**: real-time CAN data streamed to the app over Bluetooth
+
+## Vehicle controls
+
+DashPilot sends these commands to DashKit, and DashKit turns them into CAN frames on the vehicle bus. You can also bind any of them to a [multi-finger gesture](#automations).
+
+- 🚗 Frunk / trunk
+- 🪞 Mirror fold / unfold
+- ↩️ Mirror dip on reverse
+- 🔌 Charge port open / close
+- 🧤 Glovebox
+- 🌬️ Rear AC fan
+- 🔄 AC swing
+- 🔋 Battery preheat
+
+## Automations
+
+> [!TIP]
+> Automations run on DashKit itself, so they keep working when the phone isn't connected. Their settings are saved on the device.
+
+- ✋ **Multi-finger gestures**: bind a 3-, 4- or 5-finger tap on the center screen to any [vehicle control](#vehicle-controls).
+- 🌧️ **Auto wiper-off**: turns the wipers fully off when they go from OFF to AUTO. Only acts while lane assist is engaged.
+- 🏁 **Sport kick-down**: switches the pedal map to Sport while the accelerator is past a set threshold in Drive.
+- ❄️ **Keep climate on**: keeps the cabin conditioned for a set time (1–60 min) after the driver leaves the car.
+
+## Live data for DashPilot
+
 - Two CAN buses (chassis + vehicle), each on its own MCP2518FD controller.
 - Hardware acceptance filters on each bus pass only the messages DashPilot uses, so no frames get dropped under load.
 - An on-device DBC signal layer decodes and caches the latest value of every message it tracks. Automations read signals by name rather than by raw bytes.
 - Frames are streamed to the phone over an encrypted, bonded BLE link.
 
-### Vehicle controls
-DashPilot sends these commands to DashKit, and DashKit turns them into CAN frames on the vehicle bus:
+## More features
 
-| Control | Notes |
-|---------|-------|
-| Frunk / trunk | Remote closure request |
-| Mirror fold / unfold | |
-| Mirror dip on reverse | Toggles the live setting while in R |
-| Charge port open / close | |
-| Glovebox | Latch release |
-| Rear AC fan | Override toggle |
-| AC swing | Sweeps the vents. Choose driver, passenger or both, plus low, medium or full intensity |
-| Battery preheat | Makes the car think it's navigating to a Supercharger so it warms the battery |
-
-### Automations
-Automations run on DashKit itself, so they keep working when the phone isn't connected. Their settings are saved on the device.
-
-- **Multi-finger gestures**: bind a 3-, 4- or 5-finger tap on the center screen to any control (glovebox, preheat, mirrors, frunk, trunk, charge port, rear fan, mirror dip, AC swing).
-- **Auto wiper-off**: turns the wipers fully off when they go from OFF to AUTO. Only acts while lane assist is engaged.
-- **Sport kick-down**: switches the pedal map to Sport while the accelerator is past a set threshold in Drive.
-- **Keep climate on**: keeps the cabin conditioned for a set time (1–60 min) after the driver leaves the car.
-
-### Tesla BLE key
-DashKit can enroll as a Tesla BLE key, with the car provisioned and paired from DashPilot. It keeps a vehicle-command session open and reports presence, lock, sleep, charging and climate state to the app. Disable it with `CONFIG_DASHKIT_TESLA_BLE`.
-
-### Device management
-- **OTA updates** from DashPilot. If a new image crash-loops, the device rolls back to the previous one.
-- **Secure pairing**: only an already-paired phone can open a pairing window. Up to 3 phones can be bonded, with one active connection at a time.
-- **Factory reset**: hold 5 fingers on the center screen to clear all bonds and reboot.
-- **BTHome buttons** (experimental, `CONFIG_DASHKIT_BTHOME`): use a Shelly BLU button as a physical trigger, e.g. to open the glovebox.
+- 🔑 **Tesla BLE key**: DashKit can enroll as a Tesla BLE key, with the car provisioned and paired from DashPilot. It reports presence, lock, sleep, charging and climate state to the app.
+- ⬆️ **OTA updates** from DashPilot. If a new image crash-loops, the device rolls back to the previous one.
+- 🔒 **Secure pairing**: only an already-paired phone can open a pairing window. Up to 3 phones can be bonded, with one active connection at a time.
+- 🧹 **Factory reset**: hold 5 fingers on the center screen to clear all bonds and reboot.
+- 🔘 **BTHome buttons** (experimental): use a Shelly BLU button as a physical trigger, e.g. to open the glovebox.
 
 ## Using DashKit with DashPilot
 
@@ -52,9 +60,10 @@ DashKit can enroll as a Tesla BLE key, with the car provisioned and paired from 
 
 Projects people have built on top of DashKit:
 
-- **[Tesla LilyGO Head-Up Display](https://github.com/philoh-dev/tesla-lilygo-head-up-display)**: a head-up display on a LILYGO T-Display-S3 AMOLED that reads live data from DashKit over BLE. It has a compact HUD layout (speed and essentials) and a "road scene" layout with lane markings, turn signals and blind-spot warnings.
+- 🕶️ **[Tesla LilyGO Head-Up Display](https://github.com/philoh-dev/tesla-lilygo-head-up-display)**: a head-up display on a LILYGO T-Display-S3 AMOLED that reads live data from DashKit over BLE. It has a compact HUD layout (speed and essentials) and a "road scene" layout with lane markings, turn signals and blind-spot warnings.
 
-Built something with DashKit? Open a PR to add it here.
+> [!NOTE]
+> Built something with DashKit? Open a PR to add it here, or share it on [Discord](https://discord.gg/naTZgwVqvA).
 
 ## Building
 
