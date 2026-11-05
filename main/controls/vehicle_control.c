@@ -32,6 +32,7 @@ static const char *TAG = "veh_ctrl";
 #define GEAR_REVERSE  2
 #define GEAR_NEUTRAL  3
 #define GEAR_DRIVE    4
+#define EPB_PARK      3   // EPB{L,R}_unitStatus
 
 // Door unlatch: VCSEC held OPEN for 8 consecutive 100 ms frames in captures,
 // but it keeps sending its own all-zero 0x1F9 while we inject. Phase-lock to
@@ -193,14 +194,19 @@ static void door_unlatch(uint16_t door)
         "VCSEC_frontLeftRequestReason", "VCSEC_frontRightRequestReason",
         "VCSEC_rearLeftRequestReason",  "VCSEC_rearRightRequestReason" };
     if (door > 3) return;
-    // Refuse in R/N/D or when moving, and fail closed when gear or speed is
-    // unknown (no DI frame since boot). Not "must be P": a parked car's drive
-    // system goes to standby, after which the cache keeps its last P frame.
-    double g = -1, kph = -1;
-    if (can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) != ESP_OK
-        || can_get(GEAR_BUS, "DI_speed", "DI_vehicleSpeed", &kph, true) != ESP_OK
-        || (int)g == GEAR_REVERSE || (int)g == GEAR_NEUTRAL || (int)g == GEAR_DRIVE || kph > 0.5) {
-        ESP_LOGW(TAG, "door unlatch %u ignored: gear %d, %.1f kph", door, (int)g, kph);
+    // With DI data: refuse in R/N/D or when moving (not "must be P": a parked
+    // car's DI goes to standby and stops reporting P). Without any DI frame
+    // since boot (DashKit restarted while the DI sleeps), fail closed unless
+    // both parking-brake calipers report PARK.
+    double g = -1, kph = -1, l = -1, r = -1;
+    bool di = can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) == ESP_OK
+           && can_get(GEAR_BUS, "DI_speed", "DI_vehicleSpeed", &kph, true) == ESP_OK;
+    bool refuse = di ? ((int)g == GEAR_REVERSE || (int)g == GEAR_NEUTRAL || (int)g == GEAR_DRIVE || kph > 0.5)
+                     : !(can_get(VC_BUS, "EPBL_internalStatus", "EPBL_unitStatus", &l, false) == ESP_OK
+                         && can_get(VC_BUS, "EPBR_internalStatus", "EPBR_unitStatus", &r, false) == ESP_OK
+                         && (int)l == EPB_PARK && (int)r == EPB_PARK);
+    if (refuse) {
+        ESP_LOGW(TAG, "door unlatch %u ignored: gear %d, %.1f kph, EPB %d/%d", door, (int)g, kph, (int)l, (int)r);
         return;
     }
     dbc_msg_t m = dbc_msg("VCSEC_requests");

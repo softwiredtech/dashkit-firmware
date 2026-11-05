@@ -231,6 +231,38 @@ const dbc_signal_t g_dbc_signals[DBC_SIGNAL_COUNT] = {
     { "VCSEC_chargeportRequestReason", 47, 3, 0, 1.0, 0.0, -1, -1 },
     { "VCSEC_frontTrunkClosureRequest", 51, 3, 0, 1.0, 0.0, -1, -1 },
     { "VCSEC_frontTrunkRequestReason", 54, 3, 0, 1.0, 0.0, -1, -1 },
+    // ---- EPBL_internalStatus (0x288) ----
+    { "EPBL_unitStatus", 0, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_unitFaultStatus", 5, 2, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_summonState", 7, 3, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_disconnected", 10, 1, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_lockoutUnlockCount", 11, 7, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_esmCaliperRequest", 18, 3, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_csmFaultReason", 21, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_esmOperationTrigger", 26, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_summonFaultReason", 31, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_localServiceModeActive", 36, 1, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_12VFilt", 37, 12, 0, 0.00544368, 0.0, -1, -1 },
+    { "EPBL_epbmCDPQualified", 49, 2, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_internalCDPRequest", 51, 1, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_internalStatusCounter", 52, 4, 0, 1.0, 0.0, -1, -1 },
+    { "EPBL_internalStatusChecksum", 56, 8, 0, 1.0, 0.0, -1, -1 },
+    // ---- EPBR_internalStatus (0x228) ----
+    { "EPBR_unitStatus", 0, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_unitFaultStatus", 5, 2, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_summonState", 7, 3, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_disconnected", 10, 1, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_lockoutUnlockCount", 11, 7, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_esmCaliperRequest", 18, 3, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_csmFaultReason", 21, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_esmOperationTrigger", 26, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_summonFaultReason", 31, 5, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_localServiceModeActive", 36, 1, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_12VFilt", 37, 12, 0, 0.00544368, 0.0, -1, -1 },
+    { "EPBR_epbmCDPQualified", 49, 2, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_internalCDPRequest", 51, 1, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_internalStatusCounter", 52, 4, 0, 1.0, 0.0, -1, -1 },
+    { "EPBR_internalStatusChecksum", 56, 8, 0, 1.0, 0.0, -1, -1 },
     // ---- DI_systemStatus (0x118) ----
     { "DI_systemStatusChecksum", 0, 8, 0, 1.0, 0.0, -1, -1 },
     { "DI_systemStatusCounter", 8, 4, 0, 1.0, 0.0, -1, -1 },
@@ -285,18 +317,20 @@ const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT] = {
     { "UI_powertrainControl", 0x334, 8, 1, 178, 13, DBC_CKSUM_TESLA_BYTESUM, 190, 189 },
     { "UI_ventPanelControlRequest", 0x253, 7, 1, 191, 7, DBC_CKSUM_NONE, -1, -1 },
     { "VCSEC_requests", 0x1F9, 8, 1, 198, 19, DBC_CKSUM_NONE, -1, -1 },
-    { "DI_systemStatus", 0x118, 8, 0, 217, 14, DBC_CKSUM_TESLA_BYTESUM, 217, 218 },
-    { "DI_speed", 0x257, 8, 0, 231, 5, DBC_CKSUM_TESLA_BYTESUM, 231, 232 },
-    { "DAS_status2", 0x389, 8, 0, 236, 17, DBC_CKSUM_TESLA_BYTESUM, 252, 251 },
+    { "EPBL_internalStatus", 0x288, 8, 1, 217, 15, DBC_CKSUM_TESLA_BYTESUM, 231, 230 },
+    { "EPBR_internalStatus", 0x228, 8, 1, 232, 15, DBC_CKSUM_TESLA_BYTESUM, 246, 245 },
+    { "DI_systemStatus", 0x118, 8, 0, 247, 14, DBC_CKSUM_TESLA_BYTESUM, 247, 248 },
+    { "DI_speed", 0x257, 8, 0, 261, 5, DBC_CKSUM_TESLA_BYTESUM, 261, 262 },
+    { "DAS_status2", 0x389, 8, 0, 266, 17, DBC_CKSUM_TESLA_BYTESUM, 282, 281 },
 };
 
 static const uint16_t hw_filter_bus0_ids[] = {
     0x129, 0x118, 0x257, 0x399, 0x389, 0x25D,
 };
 static const uint16_t hw_filter_bus1_ids[] = {
-    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x334, 0x253, 0x1F9, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405, 0x219, 0x102, 0x103, 0x142,
+    0x249, 0x3C2, 0x3E9, 0x3DF, 0x273, 0x3B3, 0x333, 0x347, 0x2F3, 0x334, 0x253, 0x1F9, 0x288, 0x228, 0x3E2, 0x3E3, 0x2E1, 0x352, 0x252, 0x132, 0x332, 0x3B6, 0x405, 0x219, 0x102, 0x103, 0x142,
 };
 const dbc_hw_filter_set_t g_dbc_hw_filters[DBC_HW_FILTER_BUS_COUNT] = {
     { hw_filter_bus0_ids, 6 },
-    { hw_filter_bus1_ids, 25 },
+    { hw_filter_bus1_ids, 27 },
 };

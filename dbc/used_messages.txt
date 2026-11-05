@@ -32,6 +32,8 @@ UI_hvacRequest        1 decode   # rear AC fan toggle; also app: climate setpoin
 UI_powertrainControl  1 decode   # sport kick-down: UI_pedalMap (RMW)
 UI_ventPanelControlRequest 1 decode  # ac swing: UI_ventPanelLeftPositionX (RMW)
 VCSEC_requests        1 decode   # door unlatch: VCSEC_*ClosureRequest + *RequestReason (RMW)
+EPBL_internalStatus   1 decode   # door unlatch: parked check while the drive inverter sleeps
+EPBR_internalStatus   1 decode   # door unlatch: parked check while the drive inverter sleeps
 
 # ---- App-forwarded messages on the chassis bus (bus 0) ----
 SCCM_steeringAngleSensor  0 filter  # app: steering angle
