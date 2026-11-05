@@ -193,14 +193,14 @@ static void door_unlatch(uint16_t door)
         "VCSEC_frontLeftRequestReason", "VCSEC_frontRightRequestReason",
         "VCSEC_rearLeftRequestReason",  "VCSEC_rearRightRequestReason" };
     if (door > 3) return;
-    // Only refuse while actually in gear. Once a parked car's drive system goes
-    // to standby (PRND disappears from the screen) DI_gear no longer reads P,
-    // so a "must be P" gate would block exactly the case this is for.
-    int g = gear();
-    double kph = 0;
-    can_get(GEAR_BUS, "DI_speed", "DI_vehicleSpeed", &kph, true);
-    if (g == GEAR_REVERSE || g == GEAR_NEUTRAL || g == GEAR_DRIVE || kph > 0.5) {
-        ESP_LOGW(TAG, "door unlatch %u ignored: gear %d, %.1f kph", door, g, kph);
+    // Refuse in R/N/D or when moving, and fail closed when gear or speed is
+    // unknown (no DI frame since boot). Not "must be P": a parked car's drive
+    // system goes to standby, after which the cache keeps its last P frame.
+    double g = -1, kph = -1;
+    if (can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) != ESP_OK
+        || can_get(GEAR_BUS, "DI_speed", "DI_vehicleSpeed", &kph, true) != ESP_OK
+        || (int)g == GEAR_REVERSE || (int)g == GEAR_NEUTRAL || (int)g == GEAR_DRIVE || kph > 0.5) {
+        ESP_LOGW(TAG, "door unlatch %u ignored: gear %d, %.1f kph", door, (int)g, kph);
         return;
     }
     dbc_msg_t m = dbc_msg("VCSEC_requests");
