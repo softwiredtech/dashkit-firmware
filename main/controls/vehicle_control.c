@@ -7,6 +7,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 static const char *TAG = "veh_ctrl";
@@ -29,6 +30,20 @@ static const char *TAG = "veh_ctrl";
 
 #define GEAR_BUS      0
 #define GEAR_REVERSE  2
+#define GEAR_NEUTRAL  3
+#define GEAR_DRIVE    4
+#define EPB_PARK      3   // EPB{L,R}_unitStatus
+
+// Door unlatch: VCSEC held OPEN for 8 consecutive 100 ms frames in captures,
+// but it keeps sending its own all-zero 0x1F9 while we inject. Phase-lock to
+// the car: send ours right after each of its frames (so its NONE is overwritten
+// within ~1 ms) plus a 20 ms fill, for the same ~800 ms hold. Measured on a
+// 2023 Model Y; a plain 20 ms burst also worked but less consistently.
+// Reason RKE = remote keyless entry (what the Tesla app's request carries).
+#define UNLATCH_FILL_MS     20
+#define UNLATCH_HOLD_MS     800
+#define CLOSURE_OPEN        3
+#define REASON_RKE          1
 
 typedef struct {
     uint8_t     opcode;
@@ -53,6 +68,8 @@ typedef struct {
 } vc_request_t;
 
 static QueueHandle_t s_queue = NULL;
+static SemaphoreHandle_t s_unlatch_sem = NULL;   // given on each car 0x1F9 while unlatching
+static volatile uint32_t s_unlatch_id = 0;      // 0 = no unlatch in progress
 
 // Continuous RMW injector: overrides one signal on the car's live frame every
 // period_ms until the car's own value moves away from the baseline captured
@@ -159,11 +176,68 @@ static void rear_fan_toggle(void)
     s_rear_fan.target = target;
 }
 
+static int gear(void)
+{
+    double g;
+    return can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) == ESP_OK ? (int)g : -1;
+}
+
+// Pop one door latch. Builds a zero frame (never the car's live bytes, which
+// may carry other requests), sets that door's ClosureRequest + RequestReason
+// and repeats at the car's own cadence; the car's zero frames act as release.
+static void door_unlatch(uint16_t door)
+{
+    static const char *const kClosure[4] = {
+        "VCSEC_frontLeftClosureRequest", "VCSEC_frontRightClosureRequest",
+        "VCSEC_rearLeftClosureRequest",  "VCSEC_rearRightClosureRequest" };
+    static const char *const kReason[4] = {
+        "VCSEC_frontLeftRequestReason", "VCSEC_frontRightRequestReason",
+        "VCSEC_rearLeftRequestReason",  "VCSEC_rearRightRequestReason" };
+    if (door > 3) return;
+    // With DI data: refuse in R/N/D or when moving (not "must be P": a parked
+    // car's DI goes to standby and stops reporting P). Without any DI frame
+    // since boot (DashKit restarted while the DI sleeps), fail closed unless
+    // both parking-brake calipers report PARK.
+    double g = -1, kph = -1, l = -1, r = -1;
+    bool di = can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) == ESP_OK
+           && can_get(GEAR_BUS, "DI_speed", "DI_vehicleSpeed", &kph, true) == ESP_OK;
+    bool refuse = di ? ((int)g == GEAR_REVERSE || (int)g == GEAR_NEUTRAL || (int)g == GEAR_DRIVE || kph > 0.5)
+                     : !(can_get(VC_BUS, "EPBL_internalStatus", "EPBL_unitStatus", &l, false) == ESP_OK
+                         && can_get(VC_BUS, "EPBR_internalStatus", "EPBR_unitStatus", &r, false) == ESP_OK
+                         && (int)l == EPB_PARK && (int)r == EPB_PARK);
+    if (refuse) {
+        ESP_LOGW(TAG, "door unlatch %u ignored: gear %d, %.1f kph, EPB %d/%d", door, (int)g, kph, (int)l, (int)r);
+        return;
+    }
+    dbc_msg_t m = dbc_msg("VCSEC_requests");
+    dbc_sig_t sc = dbc_sig(m, kClosure[door]), sr = dbc_sig(m, kReason[door]);
+    if (sc < 0 || sr < 0) return;
+    can_frame_t f;
+    if (can_frame_init("VCSEC_requests", &f) != ESP_OK) return;
+    dbc_pack(f.data, sc, CLOSURE_OPEN);
+    dbc_pack(f.data, sr, REASON_RKE);
+    ESP_LOGI(TAG, "door unlatch %u", door);
+    xSemaphoreTake(s_unlatch_sem, 0);   // drop a stale give
+    s_unlatch_id = f.id;
+    TickType_t end = xTaskGetTickCount() + pdMS_TO_TICKS(UNLATCH_HOLD_MS);
+    while ((int32_t)(end - xTaskGetTickCount()) > 0) {
+        // A full TX FIFO (busy bus) just costs one frame; keep the hold going.
+        can_frame_send(VC_BUS, "VCSEC_requests", &f);
+        xSemaphoreTake(s_unlatch_sem, pdMS_TO_TICKS(UNLATCH_FILL_MS));
+    }
+    s_unlatch_id = 0;
+}
+
+void vehicle_control_on_frame(const can_tagged_frame_t *frame)
+{
+    if (s_unlatch_id && frame->bus_id == VC_BUS && frame->frame.id == s_unlatch_id) {
+        xSemaphoreGive(s_unlatch_sem);
+    }
+}
+
 static bool in_reverse(void)
 {
-    double gear;
-    return can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &gear, false) == ESP_OK
-           && (int)gear == GEAR_REVERSE;
+    return gear() == GEAR_REVERSE;
 }
 
 // Flip the bit relative to what is currently in effect (our injected value if
@@ -258,6 +332,10 @@ static void vehicle_control_task(void *arg)
             mirror_dip_toggle();
             continue;
         }
+        if (req.opcode == VC_CMD_DOOR_UNLATCH) {
+            door_unlatch(req.value);
+            continue;
+        }
         if (req.opcode == VC_CMD_REBOOT) {
             ESP_LOGW(TAG, "reboot requested, restarting");
             vTaskDelay(pdMS_TO_TICKS(200));  // let the BLE write ack flush
@@ -283,7 +361,8 @@ static void vehicle_control_task(void *arg)
 esp_err_t vehicle_control_init(void)
 {
     s_queue = xQueueCreate(8, sizeof(vc_request_t));
-    if (!s_queue) {
+    s_unlatch_sem = xSemaphoreCreateBinary();
+    if (!s_queue || !s_unlatch_sem) {
         return ESP_ERR_NO_MEM;
     }
     xTaskCreatePinnedToCore(vehicle_control_task, "veh_ctrl", 4096, NULL, 5, NULL, 0);
@@ -301,6 +380,7 @@ esp_err_t vehicle_control_submit(uint8_t opcode, uint16_t value)
         opcode != VC_CMD_REAR_FAN_TOGGLE &&
         opcode != VC_CMD_MIRROR_DIP_TOGGLE &&
         opcode != VC_CMD_REBOOT &&
+        opcode != VC_CMD_DOOR_UNLATCH &&
         !is_config_opcode(opcode) &&
         !find_command(opcode)) {
         ESP_LOGW(TAG, "reject unknown opcode 0x%02X", opcode);

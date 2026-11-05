@@ -1,5 +1,6 @@
 #pragma once
 
+#include "can_interface.h"
 #include "esp_err.h"
 #include <stdint.h>
 
@@ -85,7 +86,18 @@ typedef enum {
     VC_CMD_AC_SWING_INTENSITY = 0x4D,
     // Config only, not persisted. value is ignored.
     VC_CMD_AC_SWING_TOGGLE = 0x4E,
+
+    // --- Door unlatch (VCSEC_requests 0x1F9) ---
+    // Pops one door latch like the Tesla app's "Unlatch Door": the per-door
+    // ClosureRequest = OPEN with reason RKE, held ~800 ms at the car's own
+    // 0x1F9 cadence. Refused while in R/N/D or moving.
+    // value: 0=front left (driver), 1=front right, 2=rear left, 3=rear right.
+    VC_CMD_DOOR_UNLATCH = 0x50,
 } vehicle_control_opcode_t;
+
+// RX hook (called by can_manager for every received frame): phase-locks an
+// in-progress door unlatch to the car's own VCSEC_requests frames.
+void vehicle_control_on_frame(const can_tagged_frame_t *frame);
 
 // Create the command queue and worker task. Call once at startup.
 esp_err_t vehicle_control_init(void);
