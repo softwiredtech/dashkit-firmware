@@ -69,6 +69,22 @@ int main(void)
 {
     dbc_init();
 
+    // Filter-only ambient candidate must reach BLE on Vehicle CAN only.
+    {
+        for (unsigned bus = 0; bus < DBC_HW_FILTER_BUS_COUNT; bus++) {
+            unsigned matches = 0;
+            const dbc_hw_filter_set_t *fs = &g_dbc_hw_filters[bus];
+            for (unsigned i = 0; i < fs->count; i++) {
+                if (fs->ids[i] == 0x679) matches++;
+            }
+            CHECK(matches == (bus == 1 ? 1u : 0u) && fs->count <= 32,
+                  "ambient RX filter bus %u: %u matches, %u slots",
+                  bus, matches, fs->count);
+        }
+        CHECK(dbc_msg("UI_ambientLightingCtrls") == DBC_MSG_INVALID,
+              "ambient candidate remains filter-only");
+    }
+
     // 1. Charge port open = bit0 of byte0 on a zeroed UI_chargeRequest.
     {
         uint8_t d[8] = {0};
