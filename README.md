@@ -41,6 +41,29 @@ DashPilot sends these commands to DashKit, and DashKit turns them into CAN frame
 - An on-device DBC signal layer decodes and caches the latest value of every message it tracks. Automations read signals by name rather than by raw bytes.
 - Frames are streamed to the phone over an encrypted, bonded BLE link.
 
+## Interior ambient lighting
+
+Vehicle CAN (bus 1) ID **0x679**, `UI_ambientLightingCtrls`, is forwarded
+unchanged over the CAN BLE stream. This uses one additional hardware filter
+slot (28 of 32 on the vehicle controller). The message is filter-only; the app
+decodes it. Apps installing a nonempty CAN filter must include bus 1 / 0x679
+alongside their other entries.
+
+The supplied newer Tesla database layout uses zero-based byte offsets:
+
+| Field | Location |
+| --- | --- |
+| Enable/effect, raw | Byte 0 |
+| Red, green, blue | Bytes 1, 2, 3 |
+| Brightness, 0-100% | Byte 4, lower seven bits |
+| Target sections, raw | Bits 43-48 |
+
+The section mask is `((data[5] >> 3) | (data[6] << 5)) & 0x3f`.
+The DBC assumes a nominal eight-byte payload; forwarding preserves the actual
+received length and all bytes. RGB forwarding to a Rive dashboard has been
+confirmed working on a user's vehicle. Effect subdivisions, section labels,
+and compatibility with other vehicle/software variants remain unverified.
+
 ## More features
 
 - 🔑 **Tesla BLE key**: DashKit can enroll as a Tesla BLE key, with the car provisioned and paired from DashPilot. It reports presence, lock, sleep, charging and climate state to the app.
