@@ -58,3 +58,4 @@ VCLEFT_doorStatus         1 filter  # app: front/rear left door latch state
 VCRIGHT_doorStatus        1 filter  # app: front/rear right door + trunk latch state
 VCLEFT_liftgateStatus     1 filter  # app: powered trunk state (mux 0) + position in degrees (mux 1)
 UI_ambientLightingCtrls   1 filter  # app: interior strip RGB / brightness / section mask (0x679)
+VCRIGHT_restraintStatus   1 filter  # app: passenger occupancy + passenger / rear-right buckles (0x31A)
