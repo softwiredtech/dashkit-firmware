@@ -244,10 +244,23 @@ static void update_active(void)
     }
 }
 
-// Drops links that never encrypted and links whose app stopped pinging.
-static void conn_check_cb(void *arg)
+// The connection table, active handle and pairing state belong to the NimBLE
+// host task (its GAP/GATT callbacks change them). Work that starts elsewhere,
+// the esp_timer callbacks and the vehicle-control task, is posted to the
+// host's default event queue and runs there.
+static struct ble_npl_event s_conn_check_ev;
+static struct ble_npl_event s_pairing_timeout_ev;
+static struct ble_npl_event s_enter_pairing_ev;
+
+static void post_to_host(struct ble_npl_event *ev)
 {
-    (void)arg;
+    ble_npl_eventq_put(nimble_port_get_dflt_eventq(), ev);  // no-op if queued
+}
+
+// Drops links that never encrypted and links whose app stopped pinging.
+static void conn_check(struct ble_npl_event *ev)
+{
+    (void)ev;
     uint32_t t = now_s();
     for (int i = 0; i < MAX_CONNS; i++) {
         conn_slot_t *s = &s_conns[i];
@@ -291,13 +304,25 @@ static void conn_check_cb(void *arg)
     }
 }
 
-// Timer fires when a pairing window elapses without a new device pairing.
-static void pairing_timer_cb(void *arg)
+static void conn_check_cb(void *arg)
 {
     (void)arg;
+    post_to_host(&s_conn_check_ev);
+}
+
+// Runs when a pairing window elapses without a new device pairing.
+static void pairing_timeout(struct ble_npl_event *ev)
+{
+    (void)ev;
     // Stay pairable only if there are still no bonds (first-time setup).
     s_pairing_mode = (bond_count() == 0);
     ESP_LOGI(TAG, "Pairing window elapsed (pairing_mode=%d)", s_pairing_mode);
+}
+
+static void pairing_timer_cb(void *arg)
+{
+    (void)arg;
+    post_to_host(&s_pairing_timeout_ev);
 }
 
 static void open_pairing_window(void)
@@ -553,8 +578,9 @@ static void start_advertising(void)
     }
 }
 
-void ble_server_enter_pairing_mode(void)
+static void enter_pairing_mode(struct ble_npl_event *ev)
 {
+    (void)ev;
     open_pairing_window();
     // A free slot serves the new device; only when full drop a non-active link.
     if (conn_count() >= MAX_CONNS) {
@@ -570,6 +596,12 @@ void ble_server_enter_pairing_mode(void)
         }
     }
     start_advertising();
+}
+
+// Called from the vehicle-control task; the work runs on the host task.
+void ble_server_enter_pairing_mode(void)
+{
+    post_to_host(&s_enter_pairing_ev);
 }
 
 void ble_server_factory_reset(void)
@@ -857,6 +889,9 @@ esp_err_t ble_server_init(void)
         ESP_LOGE(TAG, "nimble_port_init failed: %d", rc);
         return ESP_FAIL;
     }
+    ble_npl_event_init(&s_conn_check_ev, conn_check, NULL);
+    ble_npl_event_init(&s_pairing_timeout_ev, pairing_timeout, NULL);
+    ble_npl_event_init(&s_enter_pairing_ev, enter_pairing_mode, NULL);
 
     // Configure NimBLE host
     ble_hs_cfg.reset_cb = on_reset;
