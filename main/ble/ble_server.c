@@ -912,6 +912,16 @@ bool ble_server_is_connected(void)
     return s_active_handle != BLE_HS_CONN_HANDLE_NONE;
 }
 
+size_t ble_server_notify_max(void)
+{
+    uint16_t conn = s_active_handle;
+    if (conn == BLE_HS_CONN_HANDLE_NONE) {
+        return 0;
+    }
+    uint16_t mtu = ble_att_mtu(conn);  // 0 if the link is gone
+    return mtu > 3 ? mtu - 3 : 0;
+}
+
 // The active connection: OTA status notifications target it.
 uint16_t ble_server_get_conn_handle(void)
 {
