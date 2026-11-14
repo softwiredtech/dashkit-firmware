@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "host/ble_hs.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "bthome";
@@ -50,6 +51,50 @@ static peer_t s_peers[MAX_PEERS];
 static bool s_started;
 static bool s_paused;
 static bool s_enc_warned;
+
+// Buttons allowed to trigger controls (CONFIG_DASHKIT_BTHOME_ALLOWED), in the
+// little-endian byte order NimBLE reports addresses in.
+#define MAX_ALLOWED 4
+static uint8_t s_allowed[MAX_ALLOWED][6];
+static int     s_allowed_count;
+
+static void parse_allowed(void)
+{
+    const char *p = CONFIG_DASHKIT_BTHOME_ALLOWED;
+    s_allowed_count = 0;
+    while (*p && s_allowed_count < MAX_ALLOWED) {
+        unsigned int b[6];
+        int n = 0;
+        if (sscanf(p, " %2x:%2x:%2x:%2x:%2x:%2x%n",
+                   &b[0], &b[1], &b[2], &b[3], &b[4], &b[5], &n) == 6) {
+            for (int i = 0; i < 6; i++) {
+                s_allowed[s_allowed_count][5 - i] = (uint8_t)b[i];
+            }
+            s_allowed_count++;
+        } else {
+            ESP_LOGW(TAG, "Ignoring malformed allowed address in \"%s\"", p);
+        }
+        p = strchr(p, ',');
+        if (!p) {
+            break;
+        }
+        p++;
+    }
+    if (s_allowed_count == 0) {
+        ESP_LOGW(TAG, "No buttons allowed (CONFIG_DASHKIT_BTHOME_ALLOWED); "
+                      "button events are only logged");
+    }
+}
+
+static bool is_allowed(const uint8_t *addr)
+{
+    for (int i = 0; i < s_allowed_count; i++) {
+        if (memcmp(s_allowed[i], addr, 6) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // Fixed payload size per BTHome v2 object id; -1 for ids we cannot skip over
 // (objects are packed back-to-back with no per-object length).
@@ -171,6 +216,9 @@ static void handle_bthome(const uint8_t *addr, const uint8_t *p, uint8_t len)
 
     ESP_LOGI(TAG, "Button event 0x%02X from %02X:%02X:%02X:%02X:%02X:%02X",
              button, addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
+    if (!is_allowed(addr)) {
+        return;
+    }
     if (button == BUTTON_PRESS || button == BUTTON_LONG_PRESS ||
         button == BUTTON_HOLD) {
         esp_err_t err = vehicle_control_submit(VC_CMD_GLOVEBOX, 1);
@@ -227,6 +275,7 @@ static void try_disc(void)
 
 void bthome_scan_start(void)
 {
+    parse_allowed();
     s_started = true;
     s_paused = false;
     try_disc();

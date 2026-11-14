@@ -27,4 +27,15 @@ menu "DashKit"
         help
             Passive scan for BTHome v2 advertisements (Shelly BLU buttons),
             mapping button events to vehicle controls. Work in progress.
+
+    config DASHKIT_BTHOME_ALLOWED
+        string "Allowed BTHome button addresses"
+        depends on DASHKIT_BTHOME
+        default ""
+        help
+            Comma-separated addresses of the buttons allowed to trigger
+            vehicle controls, as the log prints them ("BTHome device
+            AA:BB:CC:DD:EE:FF seen"). BTHome advertisements are unauthenticated,
+            so events from any other device are ignored. Empty: no button
+            triggers anything; nearby devices are only logged.
 endmenu

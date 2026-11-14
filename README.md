@@ -127,6 +127,7 @@ Options under `idf.py menuconfig` → **DashKit**:
 |--------|---------|---|
 | `CONFIG_DASHKIT_TESLA_BLE` | y | Tesla BLE vehicle-command client |
 | `CONFIG_DASHKIT_BTHOME` | n | BTHome / Shelly BLU button listener |
+| `CONFIG_DASHKIT_BTHOME_ALLOWED` | "" | Comma-separated button addresses allowed to trigger controls (from the "BTHome device … seen" log line) |
 
 For verbose CAN frame and status logging, uncomment `CONFIG_DASHKIT_DEBUG_LOG=y` in `sdkconfig.defaults`.
 
