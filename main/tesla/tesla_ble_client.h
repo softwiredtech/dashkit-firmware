@@ -12,6 +12,12 @@
 #pragma once
 
 #include "esp_err.h"
+#include "tesla_ble_adapter.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,6 +27,20 @@ extern "C" {
 // when CONFIG_DASHKIT_TESLA_BLE is enabled; with no enrolled key/link it logs
 // a canary and waits.
 esp_err_t tesla_ble_client_init(void);
+
+// One received Tesla frame, as queued by an RX callback.
+typedef struct {
+    uint16_t len;
+    uint8_t  data[TESLA_RX_FRAME_MAX];
+} tesla_rx_frame_t;
+
+// Wait up to timeout_ms on `q` for a frame whose to_destination.routing_address
+// matches `routing` (the address used for the outstanding request), so a late
+// frame from a previous request never answers the current one. Other frames
+// are dropped. `item` is the caller's task-owned receive buffer.
+esp_err_t tesla_recv_for_route(QueueHandle_t q, tesla_rx_frame_t *item,
+                               uint8_t *buf, size_t cap, size_t *out_len,
+                               uint32_t timeout_ms, const uint8_t routing[16]);
 
 #ifdef __cplusplus
 }
