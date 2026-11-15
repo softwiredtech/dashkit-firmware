@@ -176,9 +176,16 @@ static void rear_fan_toggle(void)
     s_rear_fan.target = target;
 }
 
+// DI_systemStatus and DI_speed arrive at 50-100 Hz while the drive inverter is
+// awake; older than this, the cached gear/speed no longer describes the car.
+#define DI_FRESH_MS 500
+
 static int gear(void)
 {
     double g;
+    if (!can_msg_fresh("DI_systemStatus", DI_FRESH_MS)) {
+        return -1;
+    }
     return can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) == ESP_OK ? (int)g : -1;
 }
 
@@ -194,12 +201,14 @@ static void door_unlatch(uint16_t door)
         "VCSEC_frontLeftRequestReason", "VCSEC_frontRightRequestReason",
         "VCSEC_rearLeftRequestReason",  "VCSEC_rearRightRequestReason" };
     if (door > 3) return;
-    // With DI data: refuse in R/N/D or when moving (not "must be P": a parked
-    // car's DI goes to standby and stops reporting P). Without any DI frame
-    // since boot (DashKit restarted while the DI sleeps), fail closed unless
-    // both parking-brake calipers report PARK.
+    // With live DI data: refuse in R/N/D or when moving (not "must be P": a
+    // parked car's DI goes to standby and stops reporting P). Without fresh DI
+    // frames (DI asleep, DashKit restarted while it sleeps, or the chassis bus
+    // gone quiet), fail closed unless both parking-brake calipers report PARK.
     double g = -1, kph = -1, l = -1, r = -1;
-    bool di = can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) == ESP_OK
+    bool di = can_msg_fresh("DI_systemStatus", DI_FRESH_MS)
+           && can_msg_fresh("DI_speed", DI_FRESH_MS)
+           && can_get(GEAR_BUS, "DI_systemStatus", "DI_gear", &g, false) == ESP_OK
            && can_get(GEAR_BUS, "DI_speed", "DI_vehicleSpeed", &kph, true) == ESP_OK;
     bool refuse = di ? ((int)g == GEAR_REVERSE || (int)g == GEAR_NEUTRAL || (int)g == GEAR_DRIVE || kph > 0.5)
                      : !(can_get(VC_BUS, "EPBL_internalStatus", "EPBL_unitStatus", &l, false) == ESP_OK
