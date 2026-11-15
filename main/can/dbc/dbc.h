@@ -58,6 +58,11 @@ int64_t dbc_phys_to_raw(dbc_sig_t sig, double phys);
 // different mux). ESP_ERR_NOT_FOUND if no frame for the message has arrived yet.
 esp_err_t can_get(uint8_t bus, const char *msg, const char *sig, double *out, bool scaling);
 
+// True if a frame for the message arrived within the last max_age_ms. The cache
+// never expires on its own, so checks that gate actions on the car's current
+// state (gear, speed) must not trust a value the bus stopped refreshing.
+bool can_msg_fresh(const char *msg, uint32_t max_age_ms);
+
 // One-shot send: zeroed frame, pack one signal (auto-writing its mux selector),
 // auto counter + checksum, transmit on `bus`. Names resolved internally.
 esp_err_t can_send(uint8_t bus, const char *msg, const char *sig, double value, bool scaling);

@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <string.h>
 
+int64_t g_fake_time_us;   // esp_timer shim clock
+
 // ---- can_manager stub (records the last sent frame) ----
 static can_frame_t s_last_sent;
 static int         s_sent_count;
@@ -187,6 +189,19 @@ int main(void)
         can_send(1, "SCCM_leftStalk", "SCCM_washWipeButtonStatus", 1, false);
         int64_t c = dbc_unpack(s_last_sent.data, sig("SCCM_leftStalk", "SCCM_leftStalkCounter"));
         CHECK(c == 10, "seed 9 then send -> counter %d (want 10)", (int)c);
+    }
+
+    // 10. Freshness: a cached frame counts as fresh only within max_age_ms.
+    {
+        uint8_t d[3] = {0};
+        g_fake_time_us = 10 * 1000 * 1000;
+        set_live(0x249, 3, d);
+        g_fake_time_us += 400 * 1000;
+        CHECK(can_msg_fresh("SCCM_leftStalk", 500), "400 ms old frame should be fresh");
+        g_fake_time_us += 200 * 1000;
+        CHECK(!can_msg_fresh("SCCM_leftStalk", 500), "600 ms old frame should be stale");
+        CHECK(!can_msg_fresh("EPBR_internalStatus", 500), "never-seen message should not be fresh");
+        CHECK(!can_msg_fresh("NoSuchMessage", 500), "unknown message should not be fresh");
     }
 
     printf("\n%s\n", g_fail ? "TESTS FAILED" : "ALL TESTS PASSED");

@@ -1,6 +1,7 @@
 #include "dbc.h"
 #include "can_manager.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 
 #include <math.h>
@@ -17,6 +18,7 @@ static uint32_t s_counter[DBC_MESSAGE_COUNT];
 // can_frame_live) need no per-message registration.
 static can_frame_t  s_cache[DBC_MESSAGE_COUNT];
 static bool         s_cache_valid[DBC_MESSAGE_COUNT];
+static int64_t      s_cache_us[DBC_MESSAGE_COUNT];   // arrival time (esp_timer)
 static portMUX_TYPE s_cache_mux = portMUX_INITIALIZER_UNLOCKED;
 
 void dbc_init(void)
@@ -45,10 +47,25 @@ void dbc_observe_frame(const can_tagged_frame_t *f)
     if (mi < 0) {
         return;  // no DBC definition for this frame: nothing to cache
     }
+    int64_t now = esp_timer_get_time();
     portENTER_CRITICAL(&s_cache_mux);
     s_cache[mi] = f->frame;
     s_cache_valid[mi] = true;
+    s_cache_us[mi] = now;
     portEXIT_CRITICAL(&s_cache_mux);
+}
+
+bool can_msg_fresh(const char *msg, uint32_t max_age_ms)
+{
+    dbc_msg_t mi = dbc_msg(msg);
+    if (mi < 0) {
+        return false;
+    }
+    portENTER_CRITICAL(&s_cache_mux);
+    bool valid = s_cache_valid[mi];
+    int64_t at = s_cache_us[mi];
+    portEXIT_CRITICAL(&s_cache_mux);
+    return valid && esp_timer_get_time() - at <= (int64_t)max_age_ms * 1000;
 }
 
 // Copy the cached frame for message `mi`, or ESP_ERR_NOT_FOUND if none yet.
