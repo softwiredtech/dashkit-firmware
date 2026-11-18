@@ -12,6 +12,8 @@ concurrency:
 
 jobs:
   build:
+    # PR binaries are built by pr-firmware.yml; host tests below still run.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
