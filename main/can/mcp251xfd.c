@@ -1,12 +1,15 @@
 #include "mcp251xfd.h"
-#include "dbc/dbc_generated.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include "mcp251xfd_stream.h"
+#include "esp_heap_caps.h"
 
 static const char *TAG = "mcp251xfd";
 
@@ -18,7 +21,7 @@ static const char *TAG = "mcp251xfd";
 #define REG_C1DBTCFG    0x008
 #define REG_C1TDC       0x00C
 #define REG_C1INT       0x01C
-#define REG_C1RXIF      0x024
+#define REG_C1RXIF      0x020
 #define REG_C1TXREQ     0x030
 #define REG_C1TEFCON    0x040
 #define REG_C1TXQCON    0x050
@@ -101,13 +104,17 @@ typedef struct {
     SemaphoreHandle_t   int_sem;
     SemaphoreHandle_t   spi_mutex;
     volatile bool       running;
-    // Count of RX FIFO overflow events (each = at least one dropped frame). The
-    // chip only flags that an overflow happened, not how many frames were lost.
-    // Incremented in read_rx_fifo; reported by an independent esp_timer so the
-    // log fires even when the drain loop is hogging the rx_task on a busy bus.
-    volatile uint32_t   rx_overflow_events;
-    uint32_t            rx_overflow_reported;  // last value the timer logged
     esp_timer_handle_t  overflow_timer;
+    // Receive/transmit core (mcp251xfd_stream.c). spi_mutex guards
+    // each group of SPI transfers; spi_gate makes the hand-over fair, so a
+    // transmit waiting for the bus goes next even while the RX task is draining
+    // back to back.
+    mcpfd_stream_t      stream;
+    SemaphoreHandle_t   spi_gate;
+    volatile bool       stream_ready;      // filters programmed, chip in normal mode
+    mcpfd_stats_t       stats_reported;    // snapshot at the last report
+    volatile uint32_t   step_max_us;       // longest single service step
+    volatile uint32_t   busy_gap_max_us;   // longest gap between steps while frames were waiting
 } mcp251xfd_ctx_t;
 
 // ---------------------------------------------------------------------------
@@ -130,7 +137,7 @@ static esp_err_t spi_write_reg(mcp251xfd_ctx_t *ctx, uint16_t addr, const uint8_
     t.tx_buffer = buf;
 
     xSemaphoreTake(ctx->spi_mutex, portMAX_DELAY);
-    esp_err_t err = spi_device_transmit(ctx->spi_dev, &t);
+    esp_err_t err = spi_device_polling_transmit(ctx->spi_dev, &t);
     xSemaphoreGive(ctx->spi_mutex);
     return err;
 }
@@ -153,7 +160,7 @@ static esp_err_t spi_read_reg(mcp251xfd_ctx_t *ctx, uint16_t addr, uint8_t *data
     };
 
     xSemaphoreTake(ctx->spi_mutex, portMAX_DELAY);
-    esp_err_t err = spi_device_transmit(ctx->spi_dev, &t);
+    esp_err_t err = spi_device_polling_transmit(ctx->spi_dev, &t);
     xSemaphoreGive(ctx->spi_mutex);
     if (err == ESP_OK) {
         memcpy(data, rx_buf + 2, len);
@@ -184,16 +191,50 @@ static esp_err_t spi_reset(mcp251xfd_ctx_t *ctx)
         .length = 16,
         .tx_buffer = tx,
     };
-    return spi_device_transmit(ctx->spi_dev, &t);
+    return spi_device_polling_transmit(ctx->spi_dev, &t);
 }
 
 // ---------------------------------------------------------------------------
-// DLC helpers
+// Glue: SPI transfer, locking and frame delivery for the core in
+// mcp251xfd_stream.c
 // ---------------------------------------------------------------------------
-static uint8_t dlc_to_len(uint8_t dlc)
+static esp_err_t stream_xfer(void *io, const uint8_t *tx, uint8_t *rx, size_t len)
 {
-    static const uint8_t map[] = {0,1,2,3,4,5,6,7,8,12,16,20,24,32,48,64};
-    return (dlc < 16) ? map[dlc] : 64;
+    mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)io;
+    spi_transaction_t t = {
+        .length = len * 8,
+        .tx_buffer = tx,
+        .rx_buffer = rx,
+    };
+    return spi_device_polling_transmit(ctx->spi_dev, &t);
+}
+
+static void stream_lock(void *arg)
+{
+    mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)arg;
+    // Whoever holds the gate is next in line for the bus. The RX task has to
+    // pass through it between chunks, so it queues behind a waiting transmit
+    // instead of re-taking the bus straight away.
+    xSemaphoreTake(ctx->spi_gate, portMAX_DELAY);
+    xSemaphoreTake(ctx->spi_mutex, portMAX_DELAY);
+    xSemaphoreGive(ctx->spi_gate);
+}
+
+static void stream_unlock(void *arg)
+{
+    mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)arg;
+    xSemaphoreGive(ctx->spi_mutex);
+}
+
+static void stream_deliver(void *arg, const can_frame_t *frame)
+{
+    mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)arg;
+    if (!ctx->rx_cb) return;
+    can_tagged_frame_t tagged;
+    tagged.frame = *frame;
+    tagged.bus_id = ctx->bus_id;
+    tagged.timestamp_us = 0;
+    ctx->rx_cb(&tagged, ctx->rx_cb_ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,46 +328,25 @@ static esp_err_t configure_bitrate(mcp251xfd_ctx_t *ctx)
     return ESP_OK;
 }
 
+// ---- Hardware acceptance filtering ----
+// The bus is always received in full, spread over the receive lanes by id. Which frames the firmware acts on
+// and which go to the app is decided in software (can_filter). The caller holds the device lock.
+static esp_err_t program_filters(mcp251xfd_ctx_t *ctx)
+{
+    ESP_LOGI(TAG, "Bus %u: receiving the whole bus", (unsigned)ctx->bus_id);
+    return mcpfd_stream_filters_program(&ctx->stream);
+}
+
 static esp_err_t configure_fifos(mcp251xfd_ctx_t *ctx)
 {
-    // FIFO 1: RX FIFO - 32 messages deep (max for FSIZE field), 8 byte payload.
-    // 32 * 16 bytes = 512 B of the chip's 2 KB RAM. TX FIFO uses another 64 B.
-    // Larger depth absorbs SPI/scheduling jitter (both CAN chips share SPI2,
-    // and the rx_task only runs once per FreeRTOS tick).
-    uint32_t rxfifo_con = (0 << FIFOCON_PLSIZE_SHIFT) |  // 8 bytes payload
-                          (31 << FIFOCON_FSIZE_SHIFT) |   // 32 messages (value = n-1)
-                          FIFOCON_TFNRFNIE;               // Not-empty interrupt
-    esp_err_t err = write_reg32(ctx, REG_C1FIFOCON(1), rxfifo_con);
-    if (err != ESP_OK) return err;
-
-    // FIFO 2: TX FIFO - 4 messages deep, 8 byte payload
-    uint32_t txfifo_con = (0 << FIFOCON_PLSIZE_SHIFT) |  // 8 bytes payload
-                          (3 << FIFOCON_FSIZE_SHIFT)  |   // 4 messages
-                          FIFOCON_TXEN;                    // TX mode
-    err = write_reg32(ctx, REG_C1FIFOCON(2), txfifo_con);
-    if (err != ESP_OK) return err;
-
-    // ---- Hardware acceptance filtering ----
-    const dbc_hw_filter_set_t *fs =
-        (ctx->bus_id < DBC_HW_FILTER_BUS_COUNT) ? &g_dbc_hw_filters[ctx->bus_id]
-                                                : NULL;
-    uint8_t n = fs ? fs->count : 0;
-    if (n > 32) n = 32;
-
-    uint32_t fltcon_words[8] = {0};  // 32 filters / 4 per word
-    for (uint8_t i = 0; i < n; i++) {
-        write_reg32(ctx, REG_C1FLTOBJ(i), fs->ids[i]);
-        write_reg32(ctx, REG_C1MASK(i), 0x7FF);
-        fltcon_words[i / 4] |= (uint32_t)0x81u << ((i % 4) * 8);
-    }
-    for (uint8_t w = 0; (uint16_t)w * 4 < n; w++) {
-        write_reg32(ctx, REG_C1FLTCON(w), fltcon_words[w]);
-    }
-
-    ESP_LOGI(TAG, "Bus %u: %u HW RX filters programmed", (unsigned)ctx->bus_id,
-             (unsigned)n);
-
-    return ESP_OK;
+    // RX FIFO 1, TX FIFO 2, RX FIFOs 3..5. Until iface_start programs the real
+    // filters, everything is routed to FIFO 1 so the loopback self-test (which
+    // reads FIFO 1) works unchanged.
+    stream_lock(ctx);
+    esp_err_t serr = mcpfd_stream_config_fifos(&ctx->stream);
+    if (serr == ESP_OK) serr = mcpfd_stream_filters_accept_all_lane0(&ctx->stream);
+    stream_unlock(ctx);
+    return serr;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,123 +362,96 @@ static void IRAM_ATTR gpio_isr_handler(void *arg)
     }
 }
 
-static void read_rx_fifo(mcp251xfd_ctx_t *ctx)
-{
-    while (true) {
-        // Check FIFO 1 status
-        uint32_t fifosta;
-        read_reg32(ctx, REG_C1FIFOSTA(1), &fifosta);
 
-        // Overflow is sticky: a frame was dropped because the FIFO filled up.
-        // Count it and clear the flag (write 0 to RXOVIF, preserving the rest).
-        if (fifosta & FIFOSTA_RXOVIF) {
-            ctx->rx_overflow_events++;
-            write_reg32(ctx, REG_C1FIFOSTA(1), fifosta & ~FIFOSTA_RXOVIF);
-        }
-
-        if (!(fifosta & FIFOSTA_TFNRFNIF)) {
-            break;  // FIFO empty
-        }
-
-        // Get user address (RAM offset of next message)
-        uint32_t ua;
-        read_reg32(ctx, REG_C1FIFOUA(1), &ua);
-
-        // Read message object from RAM (8 + 8 bytes for header + data)
-        uint8_t msg[16];
-        spi_read_reg(ctx, RAM_BASE + ua, msg, 16);
-
-        // Parse message object
-        uint32_t r0 = msg[0] | (msg[1] << 8) | (msg[2] << 16) | (msg[3] << 24);
-        uint32_t r1 = msg[4] | (msg[5] << 8) | (msg[6] << 16) | (msg[7] << 24);
-
-        can_tagged_frame_t tagged;
-        memset(&tagged, 0, sizeof(tagged));
-        tagged.bus_id = ctx->bus_id;
-
-        // SID is in bits [10:0]
-        tagged.frame.id = r0 & 0x7FF;
-        tagged.frame.extended = (r1 >> 4) & 1;
-        if (tagged.frame.extended) {
-            uint32_t eid = (r0 >> 11) & 0x3FFFF;
-            tagged.frame.id = (tagged.frame.id << 18) | eid;
-        }
-
-        tagged.frame.dlc = r1 & 0x0F;
-        tagged.frame.fd = (r1 >> 7) & 1;
-        tagged.frame.brs = (r1 >> 6) & 1;
-
-        uint8_t data_len = dlc_to_len(tagged.frame.dlc);
-        if (data_len > 8) {
-            // For CAN FD frames > 8 bytes, read remaining data
-            uint8_t extra[64];
-            spi_read_reg(ctx, RAM_BASE + ua + 8, extra, data_len);
-            memcpy(tagged.frame.data, extra, data_len);
-        } else {
-            memcpy(tagged.frame.data, &msg[8], data_len);
-        }
-
-        // Increment FIFO head pointer
-        uint32_t fifocon;
-        read_reg32(ctx, REG_C1FIFOCON(1), &fifocon);
-        fifocon |= FIFOCON_UINC;
-        write_reg32(ctx, REG_C1FIFOCON(1), fifocon);
-
-        // Deliver frame via callback
-        if (ctx->rx_cb) {
-            ctx->rx_cb(&tagged, ctx->rx_cb_ctx);
-        }
-    }
-}
-
-// Periodic RX FIFO overflow reporter.
+// Receive statistics, checked every 5 s. A healthy bus logs nothing: the line is printed only when frames
+// were lost (a lane overflowed) or a send was refused in the period.
 static void overflow_report_cb(void *arg)
 {
     mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)arg;
-    uint32_t total = ctx->rx_overflow_events;
-    uint32_t delta = total - ctx->rx_overflow_reported;
-    ctx->rx_overflow_reported = total;
-    ESP_LOGI(TAG, "bus%u RX FIFO overflow: %lu total (+%lu in %llds)",
-             ctx->bus_id, (unsigned long)total, (unsigned long)delta,
-             (long long)(RX_OVERFLOW_REPORT_US / 1000000));
+    mcpfd_stats_t now = ctx->stream.stats;       // racy snapshot, counters only
+    const mcpfd_stats_t *was = &ctx->stats_reported;
+    uint32_t rx = 0, rx_was = 0, ov = 0, ov_was = 0;
+    for (int i = 0; i < MCPFD_LANES; i++) {
+        rx += now.rx_frames[i];
+        rx_was += was->rx_frames[i];
+        ov += now.rx_overflow[i];
+        ov_was += was->rx_overflow[i];
+    }
+    uint32_t secs = (uint32_t)(RX_OVERFLOW_REPORT_US / 1000000);
+    uint32_t step_max = ctx->step_max_us, gap_max = ctx->busy_gap_max_us;
+    ctx->step_max_us = 0;
+    ctx->busy_gap_max_us = 0;
+    if (ov != ov_was || now.tx_full != was->tx_full) {
+        ESP_LOGI(TAG, "bus%u stream: rx %lu fps, overflows %lu (+%lu; per lane +%lu +%lu +%lu +%lu) "
+                      "tx %lu (full %lu) step max %lu us, busy gap max %lu us",
+                 ctx->bus_id,
+                 (unsigned long)((rx - rx_was) / secs),
+                 (unsigned long)ov, (unsigned long)(ov - ov_was),
+                 (unsigned long)(now.rx_overflow[0] - was->rx_overflow[0]),
+                 (unsigned long)(now.rx_overflow[1] - was->rx_overflow[1]),
+                 (unsigned long)(now.rx_overflow[2] - was->rx_overflow[2]),
+                 (unsigned long)(now.rx_overflow[3] - was->rx_overflow[3]),
+                 (unsigned long)now.tx_frames, (unsigned long)now.tx_full,
+                 (unsigned long)step_max, (unsigned long)gap_max);
+    }
+    if (now.rx_head_glitch != was->rx_head_glitch || now.rx_head_unconfirmed != was->rx_head_unconfirmed ||
+        now.rx_bad_status != was->rx_bad_status || now.rx_desync != was->rx_desync ||
+        now.spi_errors != was->spi_errors) {
+        ESP_LOGW(TAG, "bus%u stream anomalies: head stale %lu, head unconfirmed %lu, "
+                      "bad status %lu, desync %lu, spi errors %lu",
+                 ctx->bus_id,
+                 (unsigned long)now.rx_head_glitch, (unsigned long)now.rx_head_unconfirmed,
+                 (unsigned long)now.rx_bad_status,
+                 (unsigned long)now.rx_desync, (unsigned long)now.spi_errors);
+    }
+    ctx->stats_reported = now;
 }
+
+// How long the RX task may drain without a break before it sleeps one tick, so
+// lower-priority work on its core (the idle task, the watchdog) still runs on a
+// bus that never goes quiet.
+#define STREAM_MAX_BUSY_US   (500 * 1000)
 
 static void rx_task(void *arg)
 {
     mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)arg;
-#ifdef CONFIG_DASHKIT_DEBUG_LOG
-    uint32_t poll_count = 0;
-#endif
+    const mcpfd_hooks_t hooks = {
+        .lock = stream_lock,
+        .unlock = stream_unlock,
+        .deliver = stream_deliver,
+        .ctx = ctx,
+    };
 
     while (ctx->running) {
-        // Block on the GPIO ISR semaphore (given on INT falling edge).
-        // Fall through every 5 ms anyway as a safety net so we still drain the
-        // FIFO if an interrupt is ever missed (e.g. semaphore lost during init,
-        // or INT line already low when we enabled the IRQ).
-        xSemaphoreTake(ctx->int_sem, pdMS_TO_TICKS(5));
+        // Woken by the INT falling edge (any RX FIFO not empty). The 2 ms
+        // timeout covers a missed edge: INT is level-driven and stays low
+        // while frames are waiting.
+        xSemaphoreTake(ctx->int_sem, pdMS_TO_TICKS(2));
+        if (!ctx->stream_ready) continue;
 
-        // INT is level-sensitive on the MCP2518FD: it stays asserted as long
-        // as RXIF is set, so we drain the whole FIFO in one go. Reading the
-        // FIFO clears RXIF, which releases INT.
-        uint32_t intflag;
-        read_reg32(ctx, REG_C1INT, &intflag);
-        if (intflag & C1INT_RXIF) {
-            read_rx_fifo(ctx);
+        int64_t burst_start = esp_timer_get_time();
+        int64_t prev = 0;
+        for (;;) {
+            int64_t t0 = esp_timer_get_time();
+            if (prev && (uint32_t)(t0 - prev) > ctx->busy_gap_max_us) {
+                ctx->busy_gap_max_us = (uint32_t)(t0 - prev);
+            }
+            // One chunk from the next lane that holds frames.
+            int n = mcpfd_stream_step(&ctx->stream, &hooks);
+            int64_t t1 = esp_timer_get_time();
+            if ((uint32_t)(t1 - t0) > ctx->step_max_us) {
+                ctx->step_max_us = (uint32_t)(t1 - t0);
+            }
+            if (n == 0 || !ctx->running) break;
+            prev = t0;
+            if (t1 - burst_start > STREAM_MAX_BUSY_US) {
+                vTaskDelay(1);
+                burst_start = esp_timer_get_time();
+                prev = 0;
+            } else {
+                taskYIELD();   // let the other bus's RX task in between chunks
+            }
         }
-
-#ifdef CONFIG_DASHKIT_DEBUG_LOG
-        if ((poll_count++ % 2000) == 0) {
-            uint32_t con, fifosta, diag0, diag1;
-            read_reg32(ctx, REG_C1CON, &con);
-            read_reg32(ctx, REG_C1FIFOSTA(1), &fifosta);
-            read_reg32(ctx, REG_C1BDIAG0, &diag0);
-            read_reg32(ctx, REG_C1BDIAG1, &diag1);
-            uint8_t opmod = (con >> C1CON_OPMOD_SHIFT) & 0x7;
-            ESP_LOGI(TAG, "STATUS OPMOD=%d FIFOSTA=0x%08lx DIAG0=0x%08lx DIAG1=0x%08lx",
-                     opmod, (unsigned long)fifosta,
-                     (unsigned long)diag0, (unsigned long)diag1);
-        }
-#endif
     }
 
     vTaskDelete(NULL);
@@ -657,7 +650,7 @@ static esp_err_t iface_start(can_interface_t *self)
 
     // Independent periodic reporter for RX FIFO overflow drops. Runs in the
     // esp_timer task so it fires even when the rx_task is pinned draining a busy
-    // FIFO (read_rx_fifo would otherwise starve any in-task reporting).
+    // FIFO.
     const esp_timer_create_args_t ov_args = {
         .callback = overflow_report_cb,
         .arg = ctx,
@@ -677,6 +670,18 @@ static esp_err_t iface_start(can_interface_t *self)
     write_reg32(ctx, REG_C1FIFOCON(1), fifocon_reset);
     vTaskDelay(pdMS_TO_TICKS(1));
 
+    // Still in configuration mode: replace the self-test's "everything to FIFO 1" filter with the real routing
+    // (every frame to the lane its id selects) and empty every RX FIFO.
+    stream_lock(ctx);
+    esp_err_t ferr = program_filters(ctx);
+    if (ferr == ESP_OK) ferr = mcpfd_stream_reset_rx(&ctx->stream);
+    stream_unlock(ctx);
+    if (ferr != ESP_OK) {
+        ESP_LOGE(TAG, "Bus %d: filter setup failed: %s", ctx->bus_id, esp_err_to_name(ferr));
+        return ferr;
+    }
+    vTaskDelay(pdMS_TO_TICKS(1));
+
     // Clear all interrupt flags
     write_reg32(ctx, REG_C1INT, C1INT_RXIE);  // Keep RXIE, clear all flags
     write_reg32(ctx, REG_C1BDIAG0, 0);
@@ -692,6 +697,7 @@ static esp_err_t iface_start(can_interface_t *self)
         return err;
     }
 
+    ctx->stream_ready = true;
     return ESP_OK;
 }
 
@@ -699,6 +705,7 @@ static esp_err_t iface_stop(can_interface_t *self)
 {
     mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)self->ctx;
     ctx->running = false;
+    ctx->stream_ready = false;
 
     gpio_isr_handler_remove(ctx->pin_int);
 
@@ -713,54 +720,12 @@ static esp_err_t iface_send(can_interface_t *self, const can_frame_t *frame)
 {
     mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)self->ctx;
 
-    // Check TX FIFO 2 has space
-    uint32_t fifosta;
-    read_reg32(ctx, REG_C1FIFOSTA(2), &fifosta);
-    if (!(fifosta & FIFOSTA_TFNRFNIF)) {
-        return ESP_ERR_NO_MEM;  // TX FIFO full
-    }
-
-    // Get user address for next TX slot
-    uint32_t ua;
-    read_reg32(ctx, REG_C1FIFOUA(2), &ua);
-
-    // Build message object
-    uint32_t t0 = frame->id & 0x7FF;
-    if (frame->extended) {
-        t0 = ((frame->id >> 18) & 0x7FF) | (((frame->id) & 0x3FFFF) << 11);
-    }
-
-    uint32_t t1 = frame->dlc & 0x0F;
-    if (frame->extended) t1 |= (1 << 4);
-    if (frame->fd)       t1 |= (1 << 7);
-    if (frame->brs)      t1 |= (1 << 6);
-
-    uint8_t data_len = dlc_to_len(frame->dlc);
-    if (data_len > 8) return ESP_ERR_NOT_SUPPORTED;
-    // Always write full 16-byte message slot (8-byte header + 8-byte data
-    // region) to the MCP2518FD TX FIFO RAM.  The ESP32 SPI peripheral with
-    // DMA enabled silently drops trailing bytes when the transfer length is
-    // not word-aligned.
-    uint8_t msg[16] = {0};
-    msg[0] = t0 & 0xFF;
-    msg[1] = (t0 >> 8) & 0xFF;
-    msg[2] = (t0 >> 16) & 0xFF;
-    msg[3] = (t0 >> 24) & 0xFF;
-    msg[4] = t1 & 0xFF;
-    msg[5] = (t1 >> 8) & 0xFF;
-    msg[6] = (t1 >> 16) & 0xFF;
-    msg[7] = (t1 >> 24) & 0xFF;
-    memcpy(&msg[8], frame->data, data_len);
-
-    spi_write_reg(ctx, RAM_BASE + ua, msg, 16);
-
-    // Set UINC and TXREQ
-    uint32_t fifocon;
-    read_reg32(ctx, REG_C1FIFOCON(2), &fifocon);
-    fifocon |= FIFOCON_UINC | FIFOCON_TXREQ;
-    write_reg32(ctx, REG_C1FIFOCON(2), fifocon);
-
-    return ESP_OK;
+    // Three SPI transfers under one lock. The lock is handed over fairly, so
+    // this waits for at most the RX chunk in progress.
+    stream_lock(ctx);
+    esp_err_t serr = mcpfd_stream_send(&ctx->stream, frame);
+    stream_unlock(ctx);
+    return serr;
 }
 
 static void iface_set_rx_callback(can_interface_t *self, can_rx_callback_t cb, void *user_ctx)
@@ -773,6 +738,19 @@ static void iface_set_rx_callback(can_interface_t *self, can_rx_callback_t cb, v
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+// The semaphores and scratch buffers of a context, and the context itself.
+static void free_ctx(mcp251xfd_ctx_t *ctx)
+{
+    if (ctx->int_sem) vSemaphoreDelete(ctx->int_sem);
+    if (ctx->spi_mutex) vSemaphoreDelete(ctx->spi_mutex);
+    if (ctx->spi_gate) vSemaphoreDelete(ctx->spi_gate);
+    heap_caps_free(ctx->stream.reg_tx);
+    heap_caps_free(ctx->stream.reg_rx);
+    heap_caps_free(ctx->stream.blk_tx);
+    heap_caps_free(ctx->stream.blk_rx);
+    free(ctx);
+}
+
 can_interface_t *mcp251xfd_create(const mcp251xfd_config_t *config)
 {
     can_interface_t *iface = calloc(1, sizeof(can_interface_t));
@@ -793,6 +771,23 @@ can_interface_t *mcp251xfd_create(const mcp251xfd_config_t *config)
     ctx->running = false;
     ctx->int_sem = xSemaphoreCreateBinary();
     ctx->spi_mutex = xSemaphoreCreateMutex();
+    ctx->spi_gate = xSemaphoreCreateMutex();
+    ctx->stream.xfer = stream_xfer;
+    ctx->stream.io = ctx;
+    // DMA-capable, word-aligned scratch buffers: the SPI driver uses them
+    // directly instead of allocating a bounce buffer per transfer.
+    ctx->stream.reg_tx = heap_caps_malloc(MCPFD_REG_BUF_SIZE, MALLOC_CAP_DMA);
+    ctx->stream.reg_rx = heap_caps_malloc(MCPFD_REG_BUF_SIZE, MALLOC_CAP_DMA);
+    ctx->stream.blk_tx = heap_caps_malloc(MCPFD_BLK_BUF_SIZE, MALLOC_CAP_DMA);
+    ctx->stream.blk_rx = heap_caps_malloc(MCPFD_BLK_BUF_SIZE, MALLOC_CAP_DMA);
+    if (!ctx->spi_gate || !ctx->stream.reg_tx || !ctx->stream.reg_rx ||
+        !ctx->stream.blk_tx || !ctx->stream.blk_rx) {
+        ESP_LOGE(TAG, "stream buffers: out of memory");
+        free_ctx(ctx);
+        free(iface);
+        return NULL;
+    }
+    mcpfd_stream_init(&ctx->stream);
 
     // Initialize SPI bus
     spi_bus_config_t bus_cfg = {
@@ -801,7 +796,7 @@ can_interface_t *mcp251xfd_create(const mcp251xfd_config_t *config)
         .sclk_io_num = config->pin_sclk,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = 76,  // 8 header + 4 cmd + 64 data
+        .max_transfer_sz = 160, // chunked RX read: 2 cmd + 8 * 16 data, with margin
     };
 
     esp_err_t err = spi_bus_initialize(config->spi_host, &bus_cfg, SPI_DMA_CH_AUTO);
@@ -847,9 +842,8 @@ void mcp251xfd_destroy(can_interface_t *iface)
     mcp251xfd_ctx_t *ctx = (mcp251xfd_ctx_t *)iface->ctx;
     if (ctx) {
         if (ctx->running) iface->stop(iface);
-        if (ctx->int_sem) vSemaphoreDelete(ctx->int_sem);
         // SPI cleanup would go here
-        free(ctx);
+        free_ctx(ctx);
     }
     free(iface);
 }

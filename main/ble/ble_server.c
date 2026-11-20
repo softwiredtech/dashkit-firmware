@@ -356,7 +356,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
             }
             update_active();
             if (conn_count() == 0) {
-                // Reset the CAN filter to pass-through for the next client.
+                // Reset the CAN filter to its default (the used_messages.txt ids) for the next client.
                 can_filter_set(NULL, 0);
             }
         }
@@ -608,7 +608,9 @@ static int gatt_filter_access(uint16_t conn_handle, uint16_t attr_handle,
     }
 
     uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-    uint8_t buf[256];
+    // 512: the largest attribute value BLE allows, about 125 ids. Static, not on the
+    // NimBLE host task's stack; access callbacks only ever run on that one task.
+    static uint8_t buf[512];
     if (len > sizeof(buf)) {
         ESP_LOGW(TAG, "Filter write too large (%u bytes)", len);
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;

@@ -94,6 +94,9 @@ jobs:
       - name: Verify vendored Tesla protos + generated bindings are in sync
         run: bash tools/check_proto_sync.sh
 
+      - name: Run CAN host tests (DBC engine, MCP251xFD core against a chip model, app CAN filter)
+        run: bash tools/test/run_can_host_test.sh
+
       - name: Run Tesla crypto known-answer tests
         run: bash tools/test/run_tesla_crypto_test.sh
 
