@@ -361,11 +361,12 @@ esp_err_t tesla_pairing_start(void)
 }
 
 // Cancel an in-progress enrollment back to staged. Tear down any central link
-// so an open tap window dies immediately.
+// so an open tap window dies immediately. Runs on the NimBLE host task (GATT
+// write), so it only requests the disconnect; the pairing task finishes it.
 esp_err_t tesla_pairing_cancel(void)
 {
     s_app_allowed = false;
-    tesla_ble_disconnect();
+    tesla_ble_request_disconnect();
     ESP_LOGI(TAG, "app cancel: enrollment stopped");
     return ESP_OK;
 }
@@ -378,7 +379,7 @@ esp_err_t tesla_pairing_reset(void)
     esp_err_t err = tesla_storage_erase_all();
     s_app_allowed = false;
     s_configured = false;
-    tesla_ble_disconnect();
+    tesla_ble_request_disconnect();
     ESP_LOGW(TAG, "app reset: Tesla key erased (app re-provisions via 0x04)");
     (void)err;
     return ESP_OK;

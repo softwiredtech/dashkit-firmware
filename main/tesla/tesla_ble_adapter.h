@@ -56,8 +56,14 @@ esp_err_t tesla_ble_send(const uint8_t *data, size_t len);
 esp_err_t tesla_ble_keepalive(void);
 
 // Terminate the central link (error / end of use). Safe to call when not
-// connected.
+// connected. Blocks until the link is down, so never call it on the NimBLE
+// host task.
 void tesla_ble_disconnect(void);
+
+// Start tearing the central link down without waiting, for the NimBLE host
+// task (GATT callbacks). The DISCONNECT event completes the cleanup; the task
+// using the link then sees it fail.
+void tesla_ble_request_disconnect(void);
 
 #ifdef __cplusplus
 }

@@ -805,6 +805,29 @@ void tesla_ble_disconnect(void)
     central_abort_and_wait(2000);
 }
 
+void tesla_ble_request_disconnect(void)
+{
+    // Decided by the state, not by the connection handle: there is no link yet
+    // while connecting (the handle arrives with the connect event), and a
+    // terminate is already under way while disconnecting.
+    switch (s_central.state) {
+    case ST_IDLE:
+    case ST_DISCONNECTING:
+        return;
+    case ST_CONNECTING: {
+        int rc = ble_gap_conn_cancel();
+        ESP_LOGI(TAG, "central connect cancel requested rc=%d", rc);
+        return;
+    }
+    default: {
+        int rc = ble_gap_terminate(s_central.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        ESP_LOGI(TAG, "central terminate requested handle=%u rc=%d",
+                 s_central.conn_handle, rc);
+        return;
+    }
+    }
+}
+
 void tesla_ble_set_rx_cb(tesla_ble_rx_fn_t cb, void *arg)
 {
     s_central.rx_cb = cb;
