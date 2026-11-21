@@ -79,9 +79,8 @@ int main(void)
             for (unsigned i = 0; i < fs->count; i++) {
                 if (fs->ids[i] == 0x679) matches++;
             }
-            CHECK(matches == (bus == 1 ? 1u : 0u) && fs->count <= 32,
-                  "ambient RX filter bus %u: %u matches, %u slots",
-                  bus, matches, fs->count);
+            CHECK(matches == (bus == 1 ? 1u : 0u),
+                  "ambient id on bus %u: %u matches", bus, matches);
         }
         CHECK(dbc_msg("UI_ambientLightingCtrls") == DBC_MSG_INVALID,
               "ambient candidate remains filter-only");

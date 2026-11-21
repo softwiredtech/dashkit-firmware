@@ -25,12 +25,17 @@ static void on_frame_received(const can_tagged_frame_t *frame, void *user_ctx)
 {
     (void)user_ctx;
     if (!s_rx_queue) return;
-    // Feed the DBC value cache first so automation on_frame handlers (which read
-    // signals via can_get) observe this frame's current contents.
-    dbc_observe_frame(frame);
-    // Automations run before the BLE filter so they see all raw traffic.
-    automation_manager_on_frame(frame);
-    vehicle_control_on_frame(frame);
+    // The controllers deliver every frame on the bus. The firmware's own work is only for the ids in
+    // dbc/used_messages.txt, the same frames the hardware filters let through before; the rest of the bus
+    // skips straight to the app's filter, so it costs two bit lookups per frame.
+    if (!frame->frame.extended && can_filter_is_used(frame->bus_id, frame->frame.id)) {
+        // Feed the DBC value cache first so automation on_frame handlers (which read
+        // signals via can_get) observe this frame's current contents.
+        dbc_observe_frame(frame);
+        // Automations run before the BLE filter so they see these frames whatever the app asked for.
+        automation_manager_on_frame(frame);
+        vehicle_control_on_frame(frame);
+    }
     // Drop non-matching frames at the source so the bridge task's batching
     // timeout reflects "no more *matching* frames" rather than "no more
     // frames at all". This avoids holding onto a matching frame while we

@@ -3,21 +3,21 @@
 #
 # Columns (whitespace separated):  NAME  BUS  ROLE
 #   BUS  = 0 (chassis / party) or 1 (vehicle) -- the physical bus the frame
-#          rides on, i.e. which MCP251xFD instance must accept it.
+#          rides on.
 #   ROLE = decode : firmware decodes this message's signals on-device (full
-#                   signal table emitted -- costs flash) AND accepts it in the
-#                   HW RX filter for its bus.
-#          filter : firmware does NOT decode it; it only opens a HW RX filter
-#                   slot so the frame reaches the DashPilot app over BLE. No
-#                   signal table is emitted (no flash cost beyond one filter).
+#                   signal table emitted -- costs flash).
+#          filter : firmware does NOT decode it; the frame reaches the DashPilot
+#                   app over BLE while the app hasn't sent its own CAN filter.
+#                   No signal table is emitted.
+# Both buses are received in full, so the number of entries is not limited by
+# the MCP251xFD's 32 filters.
 #
 # Every NAME must exist in dbc/bus_1_tesla_vehicle.dbc.
-# Keep decode entries tight: every decoded message costs flash. The per-bus
-# filter set (decode + filter, de-duplicated) must stay <= 32 (MCP filter slots).
+# Keep decode entries tight: every decoded message costs flash.
 #
 # The `filter` set mirrors what the DashPilot bridge mapper reads per bus
-# (dashpilot/bridge/car/cars/tesla.h, TeslaDashKitMapper). With these accepted
-# in hardware the app no longer needs to push a CAN filter over BLE.
+# (dashpilot/bridge/car/cars/tesla.h, TeslaDashKitMapper), so the app needs no
+# CAN filter of its own.
 
 # ---- Firmware-decoded messages (all on the vehicle bus) ----
 SCCM_leftStalk        1 decode   # wiper-off: left-stalk wiper button + counter/checksum
