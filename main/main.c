@@ -8,6 +8,7 @@
 #include "vehicle_control.h"
 #include "mcp251xfd.h"
 #include "ble_server.h"
+#include "ble_stream.h"
 #include "ble_ota.h"
 #include "ble_appchan.h"
 #include "tesla_ble_adapter.h"
@@ -59,49 +60,26 @@ static void mark_app_valid_cb(void *arg)
 #define BLE_BATCH_MAX_FRAMES  16
 #define BLE_BATCH_TIMEOUT_MS  20
 
-// Build a DashPilot-compatible BLE packet from CAN frames.
-// Format: [count][timestamp_us_LE32, bus, addr_LE32, len, data...]...
-static size_t build_ble_packet(const can_tagged_frame_t *frames, int count, uint8_t *buf, size_t buf_size)
+// Which frames a device gets: the ids in its own CAN filter.
+static bool want_frame(const can_tagged_frame_t *f, void *ctx)
 {
-    size_t pos = 0;
+    const ble_receiver_t *r = ctx;
+    return can_filter_wants(r->slot, f->bus_id, f->frame.id);
+}
 
-    if (count <= 0 || pos >= buf_size) return 0;
-
-    buf[pos++] = (uint8_t)count;
-
-    for (int i = 0; i < count && pos < buf_size; i++) {
-        const can_tagged_frame_t *f = &frames[i];
-        uint8_t data_len = f->frame.dlc;
-        if (data_len > 8) data_len = 8;  // DashPilot expects classic CAN (max 8)
-
-        // Check we have room: timestamp(4) + bus(1) + addr(4) + len(1) + data(n)
-        if (pos + 10 + data_len > buf_size) {
-            buf[0] = (uint8_t)i;  // Adjust count to what we actually packed
-            break;
-        }
-
-        // Timestamp in little-endian 32-bit (microseconds since boot)
-        uint32_t ts = f->timestamp_us;
-        buf[pos++] = (ts >>  0) & 0xFF;
-        buf[pos++] = (ts >>  8) & 0xFF;
-        buf[pos++] = (ts >> 16) & 0xFF;
-        buf[pos++] = (ts >> 24) & 0xFF;
-
-        buf[pos++] = f->bus_id;
-
-        // Address in little-endian 32-bit
-        uint32_t id = f->frame.id;
-        buf[pos++] = (id >>  0) & 0xFF;
-        buf[pos++] = (id >>  8) & 0xFF;
-        buf[pos++] = (id >> 16) & 0xFF;
-        buf[pos++] = (id >> 24) & 0xFF;
-
-        buf[pos++] = data_len;
-        memcpy(&buf[pos], f->frame.data, data_len);
-        pos += data_len;
+// Sends the frames of the batch this device wants, in packets that fit its MTU (NimBLE would truncate a longer
+// notification). The devices after the primary one get packets only while NimBLE has spare buffers and miss the
+// rest of the batch otherwise, so a slower phone never holds up the primary one.
+static void send_to(const ble_receiver_t *r, const can_tagged_frame_t *batch, int count, uint8_t *buf, size_t max)
+{
+    for (int from = 0; from < count; ) {
+        int before = from;
+        size_t len = ble_stream_build(batch, count, &from, buf, max, want_frame, (void *)r);
+        if (from == before) return;  // a frame larger than the MTU: drop the rest
+        if (!len) continue;
+        if (!r->primary && !ble_server_spare_buffers()) return;
+        if (ble_server_notify_to(r->conn, buf, len) != ESP_OK && !r->primary) return;
     }
-
-    return pos;
 }
 
 // Task that bridges CAN frames to BLE notifications
@@ -110,34 +88,27 @@ static void can_to_ble_task(void *arg)
     (void)arg;
     static can_tagged_frame_t batch[BLE_BATCH_MAX_FRAMES];
     static uint8_t ble_buf[512];
+    static ble_receiver_t rx[CAN_FILTER_SLOTS];
 
     while (true) {
-        int count = 0;
+        if (can_manager_receive(&batch[0], 100) != ESP_OK) {
+            continue;
+        }
+        int count = 1;
+        while (count < BLE_BATCH_MAX_FRAMES &&
+               can_manager_receive(&batch[count], BLE_BATCH_TIMEOUT_MS) == ESP_OK) {
+            count++;
+        }
 
-        if (can_manager_receive(&batch[0], 100) == ESP_OK) {
-            count = 1;
-
-            while (count < BLE_BATCH_MAX_FRAMES) {
-                if (can_manager_receive(&batch[count], BLE_BATCH_TIMEOUT_MS) != ESP_OK) {
-                    break;
-                }
-                count++;
-            }
-
-            // Send over BLE if connected. NimBLE truncates a notification to
-            // ATT_MTU - 3, so split the batch into packets that fit.
-            size_t max = ble_server_notify_max();
+        // Each device that gets the stream, primary first, at its own MTU.
+        size_t n = ble_server_receivers(rx, CAN_FILTER_SLOTS);
+        for (size_t i = 0; i < n; i++) {
+            size_t max = ble_server_payload(rx[i].conn);
             if (max > sizeof(ble_buf)) {
                 max = sizeof(ble_buf);
             }
-            int sent = 0;
-            while (sent < count && max > 0) {
-                size_t pkt_len = build_ble_packet(&batch[sent], count - sent, ble_buf, max);
-                if (pkt_len == 0 || ble_buf[0] == 0) {
-                    break;
-                }
-                ble_server_notify(ble_buf, pkt_len);
-                sent += ble_buf[0];
+            if (max) {
+                send_to(&rx[i], batch, count, ble_buf, max);
             }
         }
     }

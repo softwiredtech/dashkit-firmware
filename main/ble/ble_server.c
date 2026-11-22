@@ -5,6 +5,7 @@
 #include "can_filter.h"
 #include "can_manager.h"
 #include "can_interface.h"
+#include "ble_stream.h"
 #include "vehicle_control.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
@@ -71,10 +72,20 @@ static const ble_uuid128_t s_version_uuid = BLE_UUID128_INIT(
     0xE0, 0xB1, 0x00, 0xCA, 0x05, 0x00, 0xDA, 0xCA
 );
 
-// Up to MAX_CONNS phones may hold a connection so a stale link can't lock out
-// a working phone. Only the "active" one — the last to subscribe to the CAN
-// characteristic — gets the CAN stream and may send commands.
+// Up to MAX_CONNS devices may hold a connection so a stale link can't lock out
+// a working phone. Every encrypted, subscribed device gets the CAN ids it asked
+// for; only the "active" one (the writable device that subscribed last, see
+// ble_stream_pick_primary) may drive the vehicle. One NimBLE connection is the
+// Tesla client's.
+#ifdef CONFIG_DASHKIT_TESLA_BLE
+#define MAX_CONNS (CONFIG_BT_NIMBLE_MAX_CONNECTIONS - 1)
+#else
 #define MAX_CONNS CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+#endif
+#if MAX_CONNS < 2
+#error "CONFIG_BT_NIMBLE_MAX_CONNECTIONS must leave room for two phones (plus the Tesla client)"
+#endif
+_Static_assert(MAX_CONNS <= CAN_FILTER_SLOTS, "one CAN filter slot per connection");
 
 typedef struct {
     uint16_t handle;           // BLE_HS_CONN_HANDLE_NONE = slot free
@@ -86,11 +97,17 @@ typedef struct {
     uint32_t last_ping_s;      // seconds: 32-bit access is atomic on Xtensa
     uint32_t connected_s;
     uint32_t sub_seq;          // global order of the last subscribe, 0 = never
+    bool     read_only;        // opted out of driving the vehicle (0x4F 01); reset on reconnect
 } conn_slot_t;
 
 static conn_slot_t s_conns[MAX_CONNS];
 static uint32_t    s_sub_seq_counter = 0;
 static volatile uint16_t s_active_handle = BLE_HS_CONN_HANDLE_NONE;
+// The devices that get the CAN stream, primary first (see ble_server_receivers).
+// Written on the host task into the copy readers are not using, then switched to.
+static ble_receiver_t   s_recv[2][MAX_CONNS];
+static uint8_t          s_recv_n[2];
+static volatile uint8_t s_recv_idx;
 static uint16_t s_chr_val_handle;
 
 // A connection that has not established encryption within this time is dropped,
@@ -211,6 +228,19 @@ static void slot_open(conn_slot_t *slot, uint16_t handle)
     slot->last_ping_s = 0;
     slot->connected_s = now_s();
     slot->sub_seq = 0;
+    slot->read_only = false;
+    can_filter_open((uint8_t)(slot - s_conns));
+}
+
+// The slot's device is gone: free it and drop its CAN filter.
+static void slot_close(conn_slot_t *slot)
+{
+    slot->handle = BLE_HS_CONN_HANDLE_NONE;
+    slot->encrypted = false;
+    slot->subscribed = false;
+    slot->peer_was_bonded = false;
+    slot->ping_seen = false;
+    can_filter_close((uint8_t)(slot - s_conns));
 }
 
 static int conn_count(void)
@@ -227,17 +257,26 @@ static int conn_count(void)
 // Active = the encrypted, subscribed link that subscribed most recently.
 static void update_active(void)
 {
-    conn_slot_t *best = NULL;
+    ble_stream_cand_t cand[MAX_CONNS];
     for (int i = 0; i < MAX_CONNS; i++) {
-        conn_slot_t *s = &s_conns[i];
-        if (s->handle == BLE_HS_CONN_HANDLE_NONE || !s->encrypted || !s->subscribed) {
-            continue;
-        }
-        if (!best || s->sub_seq > best->sub_seq) {
-            best = s;
-        }
+        const conn_slot_t *s = &s_conns[i];
+        cand[i] = (ble_stream_cand_t){
+            s->handle != BLE_HS_CONN_HANDLE_NONE && s->encrypted && s->subscribed, !s->read_only, s->sub_seq };
     }
-    uint16_t new_active = best ? best->handle : BLE_HS_CONN_HANDLE_NONE;
+    int p = ble_stream_pick_primary(cand, MAX_CONNS);
+
+    // The receivers list: the primary device first, then the others.
+    uint8_t w = s_recv_idx ^ 1, n = 0;
+    for (int k = -1; k < MAX_CONNS; k++) {
+        int i = k < 0 ? p : k;
+        if (i < 0 || (k >= 0 && i == p) || !cand[i].receiver) continue;
+        s_recv[w][n] = (ble_receiver_t){ s_conns[i].handle, (uint8_t)i, n == 0 };
+        n++;
+    }
+    s_recv_n[w] = n;
+    s_recv_idx = w;
+
+    uint16_t new_active = (p >= 0 && !s_conns[p].read_only) ? s_conns[p].handle : BLE_HS_CONN_HANDLE_NONE;
     if (new_active != s_active_handle) {
         ESP_LOGI(TAG, "Active connection: %d -> %d", s_active_handle, new_active);
         s_active_handle = new_active;
@@ -259,7 +298,7 @@ static void conn_check_cb(void *arg)
         if (ble_gap_conn_find(s->handle, NULL) != 0) {
             ESP_LOGW(TAG, "Reaped stale slot %d (handle=%d)", i, s->handle);
             bool was_active = (s->handle == s_active_handle);
-            s->handle = BLE_HS_CONN_HANDLE_NONE;
+            slot_close(s);
             if (was_active) {
                 // OTA is only ever driven by the active phone.
                 ble_ota_on_disconnect();
@@ -367,20 +406,12 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         conn_slot_t *slot = slot_by_handle(event->disconnect.conn.conn_handle);
         if (slot) {
             bool was_active = (slot->handle == s_active_handle);
-            slot->handle = BLE_HS_CONN_HANDLE_NONE;
-            slot->encrypted = false;
-            slot->subscribed = false;
-            slot->peer_was_bonded = false;
-            slot->ping_seen = false;
+            slot_close(slot);
             if (was_active) {
                 // OTA is only ever driven by the active phone.
                 ble_ota_on_disconnect();
             }
             update_active();
-            if (conn_count() == 0) {
-                // Reset the CAN filter to its default (the used_messages.txt ids) for the next client.
-                can_filter_set(NULL, 0);
-            }
         }
         start_advertising();
         break;
@@ -628,9 +659,11 @@ static int gatt_filter_access(uint16_t conn_handle, uint16_t attr_handle,
         return BLE_ATT_ERR_UNLIKELY;
     }
 
-    // The filter is shared by every link; only the active one may change it.
-    if (conn_handle != s_active_handle) {
-        ESP_LOGW(TAG, "Filter write from non-active handle %d rejected", conn_handle);
+    // Each device has its own list, read-only ones included: it only decides
+    // what that device receives.
+    conn_slot_t *slot = slot_by_handle(conn_handle);
+    if (!slot || !slot->encrypted) {
+        ESP_LOGW(TAG, "Filter write from unencrypted handle %d rejected", conn_handle);
         return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
     }
 
@@ -649,8 +682,8 @@ static int gatt_filter_access(uint16_t conn_handle, uint16_t attr_handle,
         return BLE_ATT_ERR_UNLIKELY;
     }
 
-    ESP_LOGI(TAG, "CAN filter write received (%u bytes)", out_len);
-    esp_err_t err = can_filter_set(buf, out_len);
+    ESP_LOGI(TAG, "CAN filter write received (%u bytes, handle=%d)", out_len, conn_handle);
+    esp_err_t err = can_filter_set((uint8_t)(slot - s_conns), buf, out_len);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "can_filter_set failed: %s", esp_err_to_name(err));
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -725,6 +758,23 @@ static int gatt_control_access(uint16_t conn_handle, uint16_t attr_handle,
             slot->last_ping_s = now_s();
             slot->ping_seen = true;
         }
+        return 0;
+    }
+
+    // Read-only mode, per connection, accepted from read-only devices too and
+    // never queued: [0x4F][1=read-only, 0=read/write] (as in upstream PR #87;
+    // a zero high byte may follow). It resets on reconnect.
+    if (opcode == VC_CMD_BLE_READ_ONLY) {
+        conn_slot_t *slot = slot_by_handle(conn_handle);
+        if (value > 1) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        if (!slot || !slot->encrypted) {
+            return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+        }
+        slot->read_only = value != 0;
+        ESP_LOGI(TAG, "Connection %d: read_only=%d", conn_handle, slot->read_only);
+        update_active();
         return 0;
     }
 
@@ -912,15 +962,39 @@ esp_err_t ble_server_start(void)
     return ESP_OK;
 }
 
-esp_err_t ble_server_notify(const uint8_t *data, size_t len)
+size_t ble_server_receivers(ble_receiver_t *out, size_t max)
 {
     // Pause CAN notifications during OTA to avoid BLE congestion
     if (ble_ota_is_in_progress()) {
-        return ESP_ERR_INVALID_STATE;
+        return 0;
     }
+    uint8_t r = s_recv_idx;
+    size_t n = s_recv_n[r] < max ? s_recv_n[r] : max;
+    for (size_t i = 0; i < n; i++) out[i] = s_recv[r][i];
+    return n;
+}
 
-    uint16_t conn = s_active_handle;  // snapshot: host task may change it
-    if (conn == BLE_HS_CONN_HANDLE_NONE) {
+size_t ble_server_payload(uint16_t conn)
+{
+    uint16_t mtu = ble_att_mtu(conn);  // 0 if the link is gone
+    return mtu > 3 ? mtu - 3 : 0;
+}
+
+bool ble_server_spare_buffers(void)
+{
+    return os_msys_num_free() >= BLE_STREAM_SPARE_BUFS;
+}
+
+bool ble_server_can_write(uint16_t conn)
+{
+    const conn_slot_t *slot = slot_by_handle(conn);
+    return slot && slot->encrypted && !slot->read_only;
+}
+
+esp_err_t ble_server_notify_to(uint16_t conn, const uint8_t *data, size_t len)
+{
+    // Pause CAN notifications during OTA to avoid BLE congestion
+    if (ble_ota_is_in_progress()) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -939,16 +1013,6 @@ esp_err_t ble_server_notify(const uint8_t *data, size_t len)
 bool ble_server_is_connected(void)
 {
     return s_active_handle != BLE_HS_CONN_HANDLE_NONE;
-}
-
-size_t ble_server_notify_max(void)
-{
-    uint16_t conn = s_active_handle;
-    if (conn == BLE_HS_CONN_HANDLE_NONE) {
-        return 0;
-    }
-    uint16_t mtu = ble_att_mtu(conn);  // 0 if the link is gone
-    return mtu > 3 ? mtu - 3 : 0;
 }
 
 // The active connection: OTA status notifications target it.

@@ -42,3 +42,10 @@ cc -std=gnu11 -Wall -Wextra -Werror -Wno-unused-variable "${SAN[@]}" "${INC[@]}"
    "${REPO_ROOT}/main/can/dbc/dbc_generated.c" \
    -o "${OUT}/test_can_filter"
 "${OUT}/test_can_filter"
+
+echo "==> CAN stream to several devices"
+cc -std=gnu11 -Wall -Wextra -Werror "${SAN[@]}" "${INC[@]}" -I "${REPO_ROOT}/main/ble" \
+   "${SCRIPT_DIR}/test_ble_stream.c" \
+   "${REPO_ROOT}/main/ble/ble_stream.c" \
+   -o "${OUT}/test_ble_stream"
+"${OUT}/test_ble_stream"
