@@ -107,6 +107,10 @@ static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t
 
     esp_err_t err = dbc_counter_seed_from_bus(bus, CONTROL_MSG);
     if (err == ESP_OK) {
+        dbc_pack(control.data, s_enable_sig, 0);
+        err = can_frame_send(bus, CONTROL_MSG, &control);
+    }
+    if (err == ESP_OK) {
         dbc_pack(control.data, s_enable_sig, 1);
         err = can_frame_send(bus, CONTROL_MSG, &control);
     }
