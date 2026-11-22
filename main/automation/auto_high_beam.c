@@ -11,10 +11,10 @@ static const char *TAG = "auto_high_beam";
 
 #define NVS_NAMESPACE       "auto_high_beam"
 #define NVS_KEY_ENABLED     "en"
-#define HOLD_US             2000000
+#define HOLD_US             1500000
 #define MAX_GAP_US          250000  // Allow for interleaved switch-status mux pages.
 #define CONTROL_MAX_AGE_MS  1000
-#define CONTROL_MSG         "UI_vehicleControl"
+#define CONTROL_MSG         "DAS_bodyControls"
 
 typedef enum {
     WAIT_FOR_INACTIVE,
@@ -39,7 +39,7 @@ static void auto_high_beam_init(automation_t *self)
     dbc_msg_t msg = dbc_msg("VCLEFT_switchStatus");
     s_button_sig = dbc_sig(msg, "VCLEFT_swcHighBeamButtonState");
     dbc_msg_t control = dbc_msg(CONTROL_MSG);
-    s_enable_sig = dbc_sig(control, "UI_autoHighBeamEnabled");
+    s_enable_sig = dbc_sig(control, "DAS_ahlbOverride");
     if (s_button_sig >= 0 && s_enable_sig >= 0) {
         s_mux_sig = g_dbc_signals[s_button_sig].mux_sel_sig;
         if (s_mux_sig >= 0) {
@@ -105,8 +105,11 @@ static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t
         return;
     }
 
-    dbc_pack(control.data, s_enable_sig, 0);
-    esp_err_t err = can_frame_send(bus, CONTROL_MSG, &control);
+    esp_err_t err = dbc_counter_seed_from_bus(bus, CONTROL_MSG);
+    if (err == ESP_OK) {
+        dbc_pack(control.data, s_enable_sig, 1);
+        err = can_frame_send(bus, CONTROL_MSG, &control);
+    }
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "send failed: %s", esp_err_to_name(err));
     }
