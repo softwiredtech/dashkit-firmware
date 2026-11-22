@@ -8,11 +8,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// The devices after the primary one get a packet only while this many of NimBLE's 36 buffers are free (about
-// one packet waiting): a slower link (an iPhone's 30 ms interval) then misses packets instead of holding the
-// buffers the primary device needs, which would stall the stream to both.
-#define BLE_STREAM_SPARE_BUFS 32
-
 // Does this device get this frame?
 typedef bool (*ble_stream_want_fn)(const can_tagged_frame_t *f, void *ctx);
 

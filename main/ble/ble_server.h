@@ -22,16 +22,15 @@ typedef struct {
 // ble_stream_pick_primary); none during an OTA update.
 size_t ble_server_receivers(ble_receiver_t *out, size_t max);
 
-// Send a batch of CAN frames to one device as a BLE notification.
+// Send a batch of CAN frames to one device as a BLE notification (at most 512 bytes).
 // Data must be in DashPilot wire format: [count][bus,addr_LE32,len,data...]...
-// Returns ESP_OK if notification was sent, ESP_ERR_INVALID_STATE during an OTA update.
-esp_err_t ble_server_notify_to(uint16_t conn, const uint8_t *data, size_t len);
+// Returns ESP_OK if the notification was queued, ESP_ERR_NO_MEM while the device's
+// earlier packets are still waiting (each device has a few buffers of its own),
+// ESP_ERR_INVALID_STATE during an OTA update.
+esp_err_t ble_server_notify_to(const ble_receiver_t *r, const uint8_t *data, size_t len);
 
 // Largest notification this connection carries in one piece (ATT_MTU - 3); 0 if it is gone.
 size_t ble_server_payload(uint16_t conn);
-
-// True while NimBLE has spare buffers: the devices after the primary get packets only then.
-bool ble_server_spare_buffers(void);
 
 // True if this connection may write (encrypted and not in read-only mode): app channel and firmware update.
 bool ble_server_can_write(uint16_t conn);

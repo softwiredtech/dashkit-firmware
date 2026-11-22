@@ -108,6 +108,17 @@ static volatile uint16_t s_active_handle = BLE_HS_CONN_HANDLE_NONE;
 static ble_receiver_t   s_recv[2][MAX_CONNS];
 static uint8_t          s_recv_n[2];
 static volatile uint8_t s_recv_idx;
+
+// Each device's CAN packets come from its own small buffer pool. NimBLE frees a packet's buffer, back to the
+// pool it came from, once the packet has gone out, so a device whose link is behind (a phone in a call, an
+// iPhone's 30 ms connection interval) runs out of its own buffers and misses packets, instead of filling the
+// shared pool that the other device's packets and every ATT response need. Nobody waits for anybody.
+#define STREAM_PKTS     3                                         // packets per device in flight
+#define STREAM_LEADING  16                                        // room for the ATT, L2CAP and HCI headers
+#define STREAM_BLOCK    (sizeof(struct os_mbuf) + sizeof(struct os_mbuf_pkthdr) + STREAM_LEADING + 512)
+static os_membuf_t         s_stream_mem[MAX_CONNS][OS_MEMPOOL_SIZE(STREAM_PKTS, STREAM_BLOCK)];
+static struct os_mempool   s_stream_mp[MAX_CONNS];
+static struct os_mbuf_pool s_stream_pool[MAX_CONNS];
 static uint16_t s_chr_val_handle;
 
 // A connection that has not established encryption within this time is dropped,
@@ -907,6 +918,13 @@ esp_err_t ble_server_init(void)
         ESP_LOGE(TAG, "nimble_port_init failed: %d", rc);
         return ESP_FAIL;
     }
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (os_mempool_init(&s_stream_mp[i], STREAM_PKTS, STREAM_BLOCK, s_stream_mem[i], "can_stream") != 0 ||
+            os_mbuf_pool_init(&s_stream_pool[i], &s_stream_mp[i], STREAM_BLOCK, STREAM_PKTS) != 0) {
+            ESP_LOGE(TAG, "CAN stream pool %d: init failed", i);
+            return ESP_FAIL;
+        }
+    }
 
     // Configure NimBLE host
     ble_hs_cfg.reset_cb = on_reset;
@@ -980,28 +998,32 @@ size_t ble_server_payload(uint16_t conn)
     return mtu > 3 ? mtu - 3 : 0;
 }
 
-bool ble_server_spare_buffers(void)
-{
-    return os_msys_num_free() >= BLE_STREAM_SPARE_BUFS;
-}
-
 bool ble_server_can_write(uint16_t conn)
 {
     const conn_slot_t *slot = slot_by_handle(conn);
     return slot && slot->encrypted && !slot->read_only;
 }
 
-esp_err_t ble_server_notify_to(uint16_t conn, const uint8_t *data, size_t len)
+esp_err_t ble_server_notify_to(const ble_receiver_t *r, const uint8_t *data, size_t len)
 {
     // Pause CAN notifications during OTA to avoid BLE congestion
     if (ble_ota_is_in_progress()) {
         return ESP_ERR_INVALID_STATE;
     }
+    if (r->slot >= MAX_CONNS || len > 512) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
+    struct os_mbuf *om = os_mbuf_get_pkthdr(&s_stream_pool[r->slot], 0);
     if (!om) {
+        return ESP_ERR_NO_MEM;  // this device's earlier packets are still waiting
+    }
+    om->om_data += STREAM_LEADING;
+    if (os_mbuf_append(om, data, len) != 0) {
+        os_mbuf_free_chain(om);
         return ESP_ERR_NO_MEM;
     }
+    uint16_t conn = r->conn;
     int rc = ble_gatts_notify_custom(conn, s_chr_val_handle, om);
     if (rc != 0) {
         ESP_LOGW(TAG, "Notify failed (handle=%d): %d", conn, rc);

@@ -68,17 +68,15 @@ static bool want_frame(const can_tagged_frame_t *f, void *ctx)
 }
 
 // Sends the frames of the batch this device wants, in packets that fit its MTU (NimBLE would truncate a longer
-// notification). The devices after the primary one get packets only while NimBLE has spare buffers and miss the
-// rest of the batch otherwise, so a slower phone never holds up the primary one.
+// notification). A device whose earlier packets are still waiting misses the rest of this batch; the others are
+// not held up by it.
 static void send_to(const ble_receiver_t *r, const can_tagged_frame_t *batch, int count, uint8_t *buf, size_t max)
 {
     for (int from = 0; from < count; ) {
         int before = from;
         size_t len = ble_stream_build(batch, count, &from, buf, max, want_frame, (void *)r);
         if (from == before) return;  // a frame larger than the MTU: drop the rest
-        if (!len) continue;
-        if (!r->primary && !ble_server_spare_buffers()) return;
-        if (ble_server_notify_to(r->conn, buf, len) != ESP_OK && !r->primary) return;
+        if (len && ble_server_notify_to(r, buf, len) != ESP_OK) return;
     }
 }
 
