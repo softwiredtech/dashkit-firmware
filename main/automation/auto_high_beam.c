@@ -12,9 +12,10 @@ static const char *TAG = "auto_high_beam";
 #define NVS_NAMESPACE       "auto_high_beam"
 #define NVS_KEY_ENABLED     "en"
 #define HOLD_US             1500000
-#define MAX_GAP_US          250000  // Allow for interleaved switch-status mux pages.
+#define MAX_GAP_US          500000  // Allow for interleaved switch-status mux pages.
 #define CONTROL_MAX_AGE_MS  1000
-#define CONTROL_MSG         "DAS_bodyControls"
+#define BODY_CONTROL_MSG    "DAS_bodyControls"
+#define UI_CONTROL_MSG      "UI_vehicleControl"
 
 typedef enum {
     WAIT_FOR_INACTIVE,
@@ -30,22 +31,30 @@ static int64_t s_hold_start_us;
 static const dbc_message_t *s_switch_msg;
 static dbc_sig_t s_button_sig;
 static dbc_sig_t s_mux_sig;
-static const dbc_message_t *s_control_msg;
-static dbc_sig_t s_enable_sig;
+static const dbc_message_t *s_body_control_msg;
+static dbc_sig_t s_override_sig;
+static const dbc_message_t *s_ui_control_msg;
+static dbc_sig_t s_ui_enable_sig;
 
 static void auto_high_beam_init(automation_t *self)
 {
     (void)self;
     dbc_msg_t msg = dbc_msg("VCLEFT_switchStatus");
     s_button_sig = dbc_sig(msg, "VCLEFT_swcHighBeamButtonState");
-    dbc_msg_t control = dbc_msg(CONTROL_MSG);
-    s_enable_sig = dbc_sig(control, "DAS_ahlbOverride");
-    if (s_button_sig >= 0 && s_enable_sig >= 0) {
+    dbc_msg_t control = dbc_msg(BODY_CONTROL_MSG);
+    s_override_sig = dbc_sig(control, "DAS_ahlbOverride");
+    if (s_button_sig >= 0 && s_override_sig >= 0) {
         s_mux_sig = g_dbc_signals[s_button_sig].mux_sel_sig;
         if (s_mux_sig >= 0) {
             s_switch_msg = &g_dbc_messages[msg];
-            s_control_msg = &g_dbc_messages[control];
+            s_body_control_msg = &g_dbc_messages[control];
         }
+    }
+
+    dbc_msg_t ui_control = dbc_msg(UI_CONTROL_MSG);
+    s_ui_enable_sig = dbc_sig(ui_control, "UI_autoHighBeamEnabled");
+    if (s_ui_enable_sig >= 0) {
+        s_ui_control_msg = &g_dbc_messages[ui_control];
     }
 
     nvs_handle_t nvs;
@@ -95,24 +104,34 @@ static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t
     }
     portEXIT_CRITICAL(&s_lock);
 
-    if (!send || !can_msg_fresh(CONTROL_MSG, CONTROL_MAX_AGE_MS)) {
+    if (!send || !can_msg_fresh(BODY_CONTROL_MSG, CONTROL_MAX_AGE_MS)) {
         return;
     }
-    uint8_t bus = s_control_msg->default_bus;
+    uint8_t bus = s_body_control_msg->default_bus;
     can_frame_t control;
-    if (can_frame_live(bus, CONTROL_MSG, &control) != ESP_OK ||
-        control.dlc != s_control_msg->dlc || control.extended) {
+    if (can_frame_live(bus, BODY_CONTROL_MSG, &control) != ESP_OK ||
+        control.dlc != s_body_control_msg->dlc || control.extended) {
         return;
     }
 
-    esp_err_t err = dbc_counter_seed_from_bus(bus, CONTROL_MSG);
-    if (err == ESP_OK) {
-        dbc_pack(control.data, s_enable_sig, 0);
-        err = can_frame_send(bus, CONTROL_MSG, &control);
-    }
-    if (err == ESP_OK) {
-        dbc_pack(control.data, s_enable_sig, 1);
-        err = can_frame_send(bus, CONTROL_MSG, &control);
+    esp_err_t err;
+    if (dbc_unpack(control.data, s_override_sig) == 1) {
+        err = dbc_counter_seed_from_bus(bus, BODY_CONTROL_MSG);
+        if (err == ESP_OK) {
+            dbc_pack(control.data, s_override_sig, 0);
+            err = can_frame_send(bus, BODY_CONTROL_MSG, &control);
+        }
+    } else {
+        if (!s_ui_control_msg || !can_msg_fresh(UI_CONTROL_MSG, CONTROL_MAX_AGE_MS)) {
+            return;
+        }
+        bus = s_ui_control_msg->default_bus;
+        if (can_frame_live(bus, UI_CONTROL_MSG, &control) != ESP_OK ||
+            control.dlc != s_ui_control_msg->dlc || control.extended) {
+            return;
+        }
+        dbc_pack(control.data, s_ui_enable_sig, 0);
+        err = can_frame_send(bus, UI_CONTROL_MSG, &control);
     }
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "send failed: %s", esp_err_to_name(err));
