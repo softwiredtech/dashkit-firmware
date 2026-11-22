@@ -87,11 +87,13 @@ typedef enum {
     // Config only, not persisted. value is ignored.
     VC_CMD_AC_SWING_TOGGLE = 0x4E,
 
-    // --- BLE connection role (same as upstream PR #87) ---
+    // --- BLE connection role ---
     // Handled in the BLE layer, per connection, never queued: [0x4F][1=read-only,
     // 0=read/write] (a zero high byte may follow). A read-only device still gets
     // its CAN stream but never becomes the active connection, so it can't drive
-    // the vehicle, use the app channel or update the firmware. Resets on reconnect.
+    // the vehicle, use the app channel or update the firmware. 0 also claims
+    // control: the device stays active over others that didn't send it, whatever
+    // the connect order. Resets on reconnect.
     VC_CMD_BLE_READ_ONLY = 0x4F,
 
     // --- Turn signal off in Park (DAS_bodyControls 0x3E9) ---

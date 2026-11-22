@@ -35,9 +35,10 @@ size_t ble_stream_build(const can_tagged_frame_t *frames, int count, int *from, 
 int ble_stream_pick_primary(const ble_stream_cand_t *c, int n)
 {
     int best = -1;
-    for (int pass = 0; pass < 2 && best < 0; pass++) {   // writable receivers first, then any receiver
+    // Claimed writable receivers first, then writable ones, then any receiver.
+    for (int pass = 0; pass < 3 && best < 0; pass++) {
         for (int i = 0; i < n; i++) {
-            if (!c[i].receiver || (pass == 0 && !c[i].writable)) continue;
+            if (!c[i].receiver || (pass < 2 && !c[i].writable) || (pass == 0 && !c[i].claimed)) continue;
             if (best < 0 || c[i].sub_seq > c[best].sub_seq) best = i;
         }
     }

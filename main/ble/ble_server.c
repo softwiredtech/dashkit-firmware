@@ -98,6 +98,7 @@ typedef struct {
     uint32_t connected_s;
     uint32_t sub_seq;          // global order of the last subscribe, 0 = never
     bool     read_only;        // opted out of driving the vehicle (0x4F 01); reset on reconnect
+    bool     claimed;          // asked to drive the vehicle (0x4F 00); reset on reconnect
 } conn_slot_t;
 
 static conn_slot_t s_conns[MAX_CONNS];
@@ -240,6 +241,7 @@ static void slot_open(conn_slot_t *slot, uint16_t handle)
     slot->connected_s = now_s();
     slot->sub_seq = 0;
     slot->read_only = false;
+    slot->claimed = false;
     can_filter_open((uint8_t)(slot - s_conns));
 }
 
@@ -265,14 +267,15 @@ static int conn_count(void)
     return n;
 }
 
-// Active = the encrypted, subscribed link that subscribed most recently.
+// Rebuilds the receivers list (every encrypted, subscribed device, primary first)
+// and the active connection (the primary, unless it is read-only).
 static void update_active(void)
 {
     ble_stream_cand_t cand[MAX_CONNS];
     for (int i = 0; i < MAX_CONNS; i++) {
         const conn_slot_t *s = &s_conns[i];
         cand[i] = (ble_stream_cand_t){
-            s->handle != BLE_HS_CONN_HANDLE_NONE && s->encrypted && s->subscribed, !s->read_only, s->sub_seq };
+            s->handle != BLE_HS_CONN_HANDLE_NONE && s->encrypted && s->subscribed, !s->read_only, s->sub_seq, s->claimed };
     }
     int p = ble_stream_pick_primary(cand, MAX_CONNS);
 
@@ -772,9 +775,9 @@ static int gatt_control_access(uint16_t conn_handle, uint16_t attr_handle,
         return 0;
     }
 
-    // Read-only mode, per connection, accepted from read-only devices too and
-    // never queued: [0x4F][1=read-only, 0=read/write] (as in upstream PR #87;
-    // a zero high byte may follow). It resets on reconnect.
+    // The device's role, per connection, accepted from read-only devices too and
+    // never queued: [0x4F][1=read-only, 0=read/write, which also claims control]
+    // (a zero high byte may follow). It resets on reconnect.
     if (opcode == VC_CMD_BLE_READ_ONLY) {
         conn_slot_t *slot = slot_by_handle(conn_handle);
         if (value > 1) {
@@ -784,7 +787,8 @@ static int gatt_control_access(uint16_t conn_handle, uint16_t attr_handle,
             return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
         }
         slot->read_only = value != 0;
-        ESP_LOGI(TAG, "Connection %d: read_only=%d", conn_handle, slot->read_only);
+        slot->claimed = value == 0;
+        ESP_LOGI(TAG, "Connection %d: read_only=%d claimed=%d", conn_handle, slot->read_only, slot->claimed);
         update_active();
         return 0;
     }

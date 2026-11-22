@@ -74,16 +74,21 @@ static void packets_follow_the_device_filter_and_mtu(void)
 static void primary_is_the_last_writable_subscriber(void)
 {
     ble_stream_cand_t c[4] = {
-        { true,  true,  5 },   // phone A
-        { true,  false, 9 },   // head-up display, read-only, subscribed last
-        { false, true,  12 },  // connected, not subscribed
-        { true,  true,  7 },   // phone B
+        { true, true, 5, false },   // phone A
+        { true, false, 9, false },   // head-up display, read-only, subscribed last
+        { false, true, 12, false },  // connected, not subscribed
+        { true, true, 7, false },   // phone B
     };
     CHECK(ble_stream_pick_primary(c, 4) == 3);     // a read-only device never takes over
     c[3].writable = false;
     CHECK(ble_stream_pick_primary(c, 4) == 0);
     c[0].writable = false;
     CHECK(ble_stream_pick_primary(c, 4) == 1);     // only read-only devices: the latest still gets the stream first
+    c[0].writable = c[3].writable = true;
+    c[0].claimed = true;
+    CHECK(ble_stream_pick_primary(c, 4) == 0);     // claimed control: stays primary though B subscribed later
+    c[0].writable = false;
+    CHECK(ble_stream_pick_primary(c, 4) == 3);     // claimed, then read-only: no longer first
     c[0].receiver = c[1].receiver = c[3].receiver = false;
     CHECK(ble_stream_pick_primary(c, 4) == -1);
 }

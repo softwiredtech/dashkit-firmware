@@ -22,8 +22,10 @@ typedef struct {
     bool     receiver;   // encrypted and subscribed to the CAN stream
     bool     writable;   // not in read-only mode
     uint32_t sub_seq;    // order of its last subscribe (higher = later)
+    bool     claimed;    // asked to drive the vehicle (0x4F 00)
 } ble_stream_cand_t;
 
-// The primary device: the writable receiver that subscribed last, which also drives the vehicle; with no writable
+// The primary device: the writable receiver that subscribed last, which also drives the vehicle; one that claimed
+// control (0x4F 00) comes before one that didn't, whatever the order they subscribed in. With no writable
 // one, the receiver that subscribed last (it gets the stream first, but drives nothing). -1 if none.
 int ble_stream_pick_primary(const ble_stream_cand_t *c, int n);
