@@ -115,7 +115,7 @@ static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t
 static void auto_high_beam_on_config(automation_t *self, uint8_t opcode, uint16_t value)
 {
     (void)self;
-    if (opcode != VC_CMD_AUTO_HIGH_BEAM_HOLD_ENABLE || value > 1) {
+    if (opcode != VC_CMD_TOUCH_AUTO_HIGH_BEAM_ENABLE || value > 1) {
         return;
     }
 
