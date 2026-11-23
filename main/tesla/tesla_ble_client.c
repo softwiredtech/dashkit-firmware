@@ -43,18 +43,13 @@ static const char *TAG = "tesla_client";
 
 // Vehicle frames are capped by TESLA_RX_FRAME_MAX (tesla_ble_adapter.h) so
 // both owners of the shared RX callback size their queues identically.
-typedef struct {
-    uint16_t len;
-    uint8_t  data[TESLA_RX_FRAME_MAX];
-} rx_frame_t;
-
 static QueueHandle_t s_rxq;
 
 // RX callbacks run on the NimBLE host task and must not put a 600-byte frame
 // on its stack. recv_for_route() uses a separate task-owned item so callback
 // arrival cannot overwrite a frame while it is being parsed.
-static rx_frame_t s_client_cb_frame;
-static rx_frame_t s_client_task_frame;
+static tesla_rx_frame_t s_client_cb_frame;
+static tesla_rx_frame_t s_client_task_frame;
 static uint8_t s_client_response[TESLA_RX_FRAME_MAX];
 
 // Hardware-RNG wrapper for the session crypto (mbedTLS ECDH blinding + nonce).
@@ -87,11 +82,9 @@ static void client_rx_cb(const uint8_t *data, size_t len, void *arg)
     }
 }
 
-// Wait for a frame whose to_destination.routing_address matches `routing`
-// (the address we used for the outstanding request), so a late frame from a
-// previous request never answers the current one.
-static esp_err_t recv_for_route(uint8_t *buf, size_t cap, size_t *out_len,
-                                uint32_t timeout_ms, const uint8_t routing[16])
+esp_err_t tesla_recv_for_route(QueueHandle_t q, tesla_rx_frame_t *item,
+                               uint8_t *buf, size_t cap, size_t *out_len,
+                               uint32_t timeout_ms, const uint8_t routing[16])
 {
     // Tick counter wraps (uint32): always subtract to compute what's left;
     // never compare absolute tick values directly.
@@ -102,7 +95,7 @@ static esp_err_t recv_for_route(uint8_t *buf, size_t cap, size_t *out_len,
         uint32_t elapsed = (uint32_t)(xTaskGetTickCount() - start);
         uint32_t remain = (elapsed < total) ? total - elapsed : 0;
 
-        if (xQueueReceive(s_rxq, &s_client_task_frame, (TickType_t)remain) != pdTRUE) {
+        if (xQueueReceive(q, item, (TickType_t)remain) != pdTRUE) {
             return ESP_ERR_TIMEOUT;
         }
         UniversalMessage_RoutableMessage m;
@@ -111,8 +104,8 @@ static esp_err_t recv_for_route(uint8_t *buf, size_t cap, size_t *out_len,
                                     // read as garbage (a non-matching / fault frame
                                     // would otherwise be silently dropped as "not
                                     // our response").
-        if (tesla_pb_decode_routable(s_client_task_frame.data, s_client_task_frame.len, &m) != 0) {
-            ESP_LOGD(TAG, "rx frame unparseable (len=%u); ignoring", (unsigned)s_client_task_frame.len);
+        if (tesla_pb_decode_routable(item->data, item->len, &m) != 0) {
+            ESP_LOGD(TAG, "rx frame unparseable (len=%u); ignoring", (unsigned)item->len);
             continue;   // unparseable frame: drop, keep waiting
         }
         if (m.has_to_destination &&
@@ -121,12 +114,12 @@ static esp_err_t recv_for_route(uint8_t *buf, size_t cap, size_t *out_len,
             m.to_destination.sub_destination.routing_address.size == 16 &&
             memcmp(m.to_destination.sub_destination.routing_address.bytes,
                    routing, 16) == 0) {
-            if (s_client_task_frame.len > cap) {
+            if (item->len > cap) {
                 return ESP_ERR_INVALID_SIZE;
             }
-            memcpy(buf, s_client_task_frame.data, s_client_task_frame.len);
+            memcpy(buf, item->data, item->len);
             if (out_len != NULL) {
-                *out_len = s_client_task_frame.len;
+                *out_len = item->len;
             }
             return ESP_OK;
         }
@@ -137,10 +130,10 @@ static esp_err_t recv_for_route(uint8_t *buf, size_t cap, size_t *out_len,
             m.signedMessageStatus.signed_message_fault != 0) {
             ESP_LOGW(TAG, "car replied w/ signedMessageStatus fault=%u (len=%u), not for our route",
                      (unsigned)m.signedMessageStatus.signed_message_fault,
-                     (unsigned)s_client_task_frame.len);
+                     (unsigned)item->len);
         } else {
             ESP_LOGD(TAG, "rx frame not for our route (len=%u); ignoring",
-                     (unsigned)s_client_task_frame.len);
+                     (unsigned)item->len);
         }
     }
 }
@@ -258,8 +251,9 @@ static esp_err_t refresh_status(tesla_session_t *sess, const char *vin,
         VCSEC_FromVCSECMessage from;
         esp_err_t e;
 
-        e = recv_for_route(s_client_response, sizeof(s_client_response), &resp_len,
-                           RESPONSE_TIMEOUT_MS, routing);
+        e = tesla_recv_for_route(s_rxq, &s_client_task_frame,
+                                 s_client_response, sizeof(s_client_response), &resp_len,
+                                 RESPONSE_TIMEOUT_MS, routing);
         if (e != ESP_OK) {
             ESP_LOGW(TAG, "no status response (attempt %d/3)", i + 1);
             break;
@@ -401,8 +395,9 @@ static void client_task(void *arg)
                 ESP_LOGW(TAG, "handshake send failed");
                 goto link_down;
             }
-            if (recv_for_route(s_client_response, sizeof(s_client_response), &resp_len,
-                               RESPONSE_TIMEOUT_MS, routing) != ESP_OK) {
+            if (tesla_recv_for_route(s_rxq, &s_client_task_frame,
+                                     s_client_response, sizeof(s_client_response), &resp_len,
+                                     RESPONSE_TIMEOUT_MS, routing) != ESP_OK) {
                 ESP_LOGW(TAG, "no handshake response (car asleep?)");
                 goto link_down;
             }
@@ -449,7 +444,7 @@ static void client_task(void *arg)
 
 esp_err_t tesla_ble_client_init(void)
 {
-    s_rxq = xQueueCreate(4, sizeof(rx_frame_t));
+    s_rxq = xQueueCreate(4, sizeof(tesla_rx_frame_t));
     if (s_rxq == NULL) {
         ESP_LOGE(TAG, "failed to create rx queue");
         return ESP_ERR_NO_MEM;
