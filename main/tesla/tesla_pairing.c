@@ -224,6 +224,10 @@ static esp_err_t tesla_pairing_enroll(const tesla_keypair_t *key,
     // Own the RX path for the duration of the attempt (the client poll loop is
     // idle while no key is enrolled).
     tesla_ble_set_rx_cb(pairing_rx_cb, NULL);
+    // Drain stale frames (a late reply from a previous attempt must not decide
+    // this one).
+    while (s_rxq != NULL && xQueueReceive(s_rxq, &s_pairing_task_frame, 0) == pdTRUE) {
+    }
 
     ESP_LOGI(TAG, "connecting to %02X:%02X:%02X:%02X:%02X:%02X for enrollment",
              addr->val[5], addr->val[4], addr->val[3], addr->val[2],
