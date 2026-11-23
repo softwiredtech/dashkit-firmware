@@ -12,6 +12,8 @@ static const char *TAG = "wiper_off";
 
 #define BUS  1
 
+#define DAS_BODY_CONTROLS_ID 0x3E9
+
 // Persist the enabled flag so it survives a reboot/power-cycle even before the
 // Android app reconnects and re-syncs it.
 #define NVS_NAMESPACE   "wiper_off"
@@ -95,6 +97,12 @@ static void wiper_off_init(automation_t *self)
 static void wiper_off_on_frame(automation_t *self, const can_tagged_frame_t *frame)
 {
     (void)self;
+
+    // Called for every received frame; only a fresh DAS_bodyControls can
+    // change the wiper speed (can_get reads the cached copy by name).
+    if (frame->frame.id != DAS_BODY_CONTROLS_ID) {
+        return;
+    }
 
     // DAS_wiperSpeed: 0 = AUTO, 1..14 = manual speeds, 15 = OFF.
     double speed;
