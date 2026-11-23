@@ -22,7 +22,7 @@
 # ---- Firmware-decoded messages (all on the vehicle bus) ----
 SCCM_leftStalk        1 decode   # wiper-off: left-stalk wiper button + counter/checksum
 VCLEFT_switchStatus   1 decode   # wiper-off scroll-tick; also app: buckle status
-DAS_bodyControls      1 decode   # wiper-off: DAS_wiperSpeed trigger
+DAS_bodyControls      1 decode   # wiper-off: DAS_wiperSpeed trigger; signal off in Park: turn signal cancel
 UI_status2            1 decode   # multi-finger: UI_activeTouchPoints
 UI_vehicleControl     1 decode   # vehicle control: closure / mirror fold
 UI_vehicleControl2    1 decode   # vehicle control: glovebox (RMW)
@@ -44,8 +44,8 @@ DAS_status2               0 decode  # app: ADAS state; wiper-off gate reads DAS_
 DAS_road                  0 filter  # app: traffic light color / stop line dist
 
 # ---- App-forwarded messages on the vehicle bus (bus 1) ----
-VCLEFT_lightStatus        1 filter  # app: left turn signal
-VCRIGHT_lightStatus       1 filter  # app: right turn signal
+VCLEFT_lightStatus        1 decode  # app: left turn signal; signal off in Park: left lamp
+VCRIGHT_lightStatus       1 decode  # app: right turn signal; signal off in Park: right lamp
 VCFRONT_status            1 filter  # app: any door open
 BMS_energyStatus          1 filter  # app: pack energy
 BMS_powerAvailable        1 filter  # app: regen / discharge power
