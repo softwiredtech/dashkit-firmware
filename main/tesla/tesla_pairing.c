@@ -10,6 +10,7 @@
 #include "tesla_pairing.h"
 
 #include "tesla_ble_adapter.h"
+#include "tesla_ble_client.h"
 #include "ble_appchan.h"
 #include "led.h"
 #include "protobuf_build.h"
@@ -42,10 +43,7 @@ static const char *TAG = "tesla_pairing";
 // How often the task re-checks the app 'start' latch once a car is staged.
 #define STAGE_POLL_MS       200
 
-typedef struct {
-    uint16_t len;
-    uint8_t  data[TESLA_RX_FRAME_MAX];
-} pairing_frame_t;
+typedef tesla_rx_frame_t pairing_frame_t;
 
 static QueueHandle_t s_rxq;
 
@@ -224,6 +222,10 @@ static esp_err_t tesla_pairing_enroll(const tesla_keypair_t *key,
     // Own the RX path for the duration of the attempt (the client poll loop is
     // idle while no key is enrolled).
     tesla_ble_set_rx_cb(pairing_rx_cb, NULL);
+    // Drain stale frames (a late reply from a previous attempt must not decide
+    // this one).
+    while (s_rxq != NULL && xQueueReceive(s_rxq, &s_pairing_task_frame, 0) == pdTRUE) {
+    }
 
     ESP_LOGI(TAG, "connecting to %02X:%02X:%02X:%02X:%02X:%02X for enrollment",
              addr->val[5], addr->val[4], addr->val[3], addr->val[2],
@@ -428,32 +430,9 @@ static esp_err_t tesla_pairing_verify_enrolled(const tesla_keypair_t *key,
 
     // Wait for the handshake response matching OUR routing address; drop any
     // other frame that races in from the previous session.
-    esp_err_t recv_err = ESP_ERR_TIMEOUT;
-    uint32_t start = xTaskGetTickCount();
-    while (recv_err != ESP_OK &&
-           (uint32_t)(xTaskGetTickCount() - start) < pdMS_TO_TICKS(RESPONSE_TIMEOUT_MS)) {
-        if (xQueueReceive(s_rxq, &s_pairing_task_frame,
-                          pdMS_TO_TICKS(RESPONSE_TIMEOUT_MS)) != pdTRUE) {
-            break;
-        }
-        UniversalMessage_RoutableMessage m;
-        memset(&m, 0, sizeof(m));
-        if (tesla_pb_decode_routable(s_pairing_task_frame.data,
-                                     s_pairing_task_frame.len, &m) != 0) {
-            continue;
-        }
-        if (m.has_to_destination &&
-            m.to_destination.which_sub_destination ==
-                UniversalMessage_Destination_routing_address_tag &&
-            m.to_destination.sub_destination.routing_address.size == 16 &&
-            memcmp(m.to_destination.sub_destination.routing_address.bytes,
-                   routing, 16) == 0) {
-            resp_len = s_pairing_task_frame.len;
-            memcpy(resp, s_pairing_task_frame.data, s_pairing_task_frame.len);
-            recv_err = ESP_OK;
-        }
-        // Otherwise: not our response, keep waiting.
-    }
+    esp_err_t recv_err = tesla_recv_for_route(s_rxq, &s_pairing_task_frame,
+                                              resp, TESLA_RX_FRAME_MAX, &resp_len,
+                                              RESPONSE_TIMEOUT_MS, routing);
     if (recv_err != ESP_OK) {
         ESP_LOGW(TAG, "verify: no handshake response (car asleep?)");
         tesla_ble_disconnect();

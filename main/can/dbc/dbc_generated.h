@@ -34,7 +34,7 @@ typedef struct {
 } dbc_message_t;
 
 #define DBC_MESSAGE_COUNT 17
-#define DBC_SIGNAL_COUNT  283
+#define DBC_SIGNAL_COUNT  284
 
 extern const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT];
 extern const dbc_signal_t  g_dbc_signals[DBC_SIGNAL_COUNT];

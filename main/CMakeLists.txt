@@ -33,6 +33,7 @@ idf_component_register(
         "controls/battery_preheat.c"
         "automation/automation_manager.c"
         "automation/wiper_off.c"
+        "automation/auto_high_beam.c"
         "automation/multi_finger.c"
         "automation/climate_keep.c"
         "automation/sport_kickdown.c"

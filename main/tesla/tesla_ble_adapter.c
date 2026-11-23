@@ -73,7 +73,10 @@ static struct {
     size_t  rx_len;
     tesla_ble_rx_fn_t rx_cb;
     void   *rx_arg;
-} s_central;
+} s_central = {
+    // 0 is a valid NimBLE connection handle.
+    .conn_handle = BLE_HS_CONN_HANDLE_NONE,
+};
 
 // NimBLE invokes the notification callback on the host task. Keep the largest
 // ATT chunk out of that task's stack; rx_ingest() copies it into s_central's
@@ -558,7 +561,7 @@ static void central_abort_and_wait(uint32_t timeout_ms)
     if (s_central.state == ST_IDLE) {
         return;
     }
-    if (s_central.conn_handle != 0) {
+    if (s_central.conn_handle != BLE_HS_CONN_HANDLE_NONE) {
         uint16_t handle = s_central.conn_handle;
         s_central.state = ST_DISCONNECTING;
         int rc = ble_gap_terminate(handle, BLE_ERR_REM_USER_CONN_TERM);
@@ -579,7 +582,7 @@ static void central_abort_and_wait(uint32_t timeout_ms)
         s_central.generation = 1;
     }
     s_central.state = ST_IDLE;
-    s_central.conn_handle = 0;
+    s_central.conn_handle = BLE_HS_CONN_HANDLE_NONE;
 }
 
 esp_err_t tesla_ble_connect(const void *addr, uint32_t timeout_ms)
@@ -628,7 +631,7 @@ esp_err_t tesla_ble_connect(const void *addr, uint32_t timeout_ms)
     if (s_central.generation == 0) {
         s_central.generation = 1;
     }
-    s_central.conn_handle = 0;
+    s_central.conn_handle = BLE_HS_CONN_HANDLE_NONE;
     s_central.svc_start = s_central.svc_end = 0;
     s_central.tx_handle = s_central.rx_handle = 0;
     s_central.rx_def_handle = s_central.rx_dsc_end = 0;
@@ -662,7 +665,7 @@ esp_err_t tesla_ble_send(const uint8_t *data, size_t len)
     uint16_t mtu;
     size_t off = 0;
 
-    if (s_central.state != ST_READY || s_central.conn_handle == 0 ||
+    if (s_central.state != ST_READY || s_central.conn_handle == BLE_HS_CONN_HANDLE_NONE ||
         s_central.tx_handle == 0) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -773,7 +776,7 @@ static int keepalive_read_cb(uint16_t conn_handle,
 // No-op when not connected.
 esp_err_t tesla_ble_keepalive(void)
 {
-    if (s_central.state != ST_READY || s_central.conn_handle == 0 ||
+    if (s_central.state != ST_READY || s_central.conn_handle == BLE_HS_CONN_HANDLE_NONE ||
         s_central.rx_cccd_handle == 0) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -813,7 +816,7 @@ static void central_fail_cleanup(void)
     central_state_t prev = s_central.state;
     reconcile_transport_after_abort();
     s_central.state = ST_IDLE;
-    s_central.conn_handle = 0;
+    s_central.conn_handle = BLE_HS_CONN_HANDLE_NONE;
     // A peer drop during connect/discovery fails a blocked
     // tesla_ble_connect() fast, instead of riding out the full timeout with
     // a misleading TIMEOUT result.

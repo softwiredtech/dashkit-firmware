@@ -8369,6 +8369,7 @@ BO_ 962 VCLEFT_switchStatus: 8 VEH
  SG_ VCLEFT_swcLeftTiltLeft m1 : 14|2@1+ (1,0) [0|3] "" X
  SG_ VCLEFT_swcLeftTiltRight m1 : 3|2@1+ (1,0) [0|3] "" X
  SG_ VCLEFT_swcRightDoublePress m1 : 42|1@1+ (1,0) [0|1] "" X
+ SG_ VCLEFT_swcHighBeamButtonState m1 : 46|2@1+ (1,0) [0|3] "" X
  SG_ VCLEFT_swcRightPressed m1 : 12|2@1+ (1,0) [0|3] "" X
  SG_ VCLEFT_swcRightScrollTicks m1 : 24|6@1- (1,0) [-32|31] "" X
  SG_ VCLEFT_swcRightTiltLeft m1 : 8|2@1+ (1,0) [0|3] "" X
