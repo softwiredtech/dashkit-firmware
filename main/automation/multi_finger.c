@@ -29,6 +29,8 @@ static const char *TAG = "multi_finger";
 // Holding 5 fingers this long wipes all BLE bonds and reboots (clean pairing state).
 #define RESET_HOLD_US       (6000 * 1000)
 
+#define UI_STATUS2_ID       0x3DF
+
 // Action bound to each finger count, indexed by (fingers - MULTI_FINGER_MIN_FINGERS).
 static volatile uint8_t s_actions[ACTION_SLOTS] = { MULTI_FINGER_ACTION_NONE };
 static volatile bool     s_mirrors_folded = false;
@@ -172,6 +174,12 @@ static void multi_finger_init(automation_t *self)
 static void multi_finger_on_frame(automation_t *self, const can_tagged_frame_t *frame)
 {
     (void)self;
+
+    // Called for every received frame; only a fresh UI_status2 can change the
+    // touch count (can_get reads the cached copy by name).
+    if (frame->frame.id != UI_STATUS2_ID) {
+        return;
+    }
 
     double points_d;
     if (can_get(frame->bus_id, "UI_status2", "UI_activeTouchPoints", &points_d, false) != ESP_OK) {
