@@ -102,9 +102,10 @@ def generate(dbc_path, manifest_path, out_c, out_h):
     messages = [by_name[e["name"]] for e in decode_entries]
     bus_of = {e["name"]: e["bus"] for e in decode_entries}
 
-    # Per-bus HW acceptance-filter ID lists: every manifest entry (decode +
-    # filter), grouped by its bus, de-duplicated, in file order. Consumed by the
-    # MCP251xFD driver to program one exact-match filter per accepted ID.
+    # Per-bus ID lists: every manifest entry (decode + filter), grouped by its
+    # bus, de-duplicated, in file order. The MCP251xFD driver receives the whole
+    # bus; these are the ids the firmware's own hooks run for, and what the app
+    # gets while it hasn't sent its own CAN filter.
     NUM_BUSES = 2
     hw_filter_ids = [[] for _ in range(NUM_BUSES)]
     for e in manifest:
@@ -113,8 +114,8 @@ def generate(dbc_path, manifest_path, out_c, out_h):
         if sid not in lst:
             lst.append(sid)
     for b, lst in enumerate(hw_filter_ids):
-        if len(lst) > 32:
-            sys.stderr.write("error: bus %d needs %d HW filters (max 32)\n"
+        if len(lst) > 255:
+            sys.stderr.write("error: bus %d lists %d ids (max 255)\n"
                              % (b, len(lst)))
             sys.exit(1)
 
@@ -231,9 +232,10 @@ def generate(dbc_path, manifest_path, out_c, out_h):
     h.append("extern const dbc_message_t g_dbc_messages[DBC_MESSAGE_COUNT];")
     h.append("extern const dbc_signal_t  g_dbc_signals[DBC_SIGNAL_COUNT];")
     h.append("")
-    h.append("// Per-bus hardware RX acceptance-filter ID lists (11-bit standard")
-    h.append("// IDs). Index g_dbc_hw_filters[] by physical bus id (0=chassis,")
-    h.append("// 1=vehicle); program one exact-match MCP251xFD filter per id.")
+    h.append("// Per-bus lists of the used_messages.txt ids (11-bit standard IDs).")
+    h.append("// Index g_dbc_hw_filters[] by physical bus id (0=chassis, 1=vehicle).")
+    h.append("// The buses are received in full; these are the ids the firmware acts")
+    h.append("// on and forwards to an app that has not sent its own CAN filter.")
     h.append("typedef struct {")
     h.append("    const uint16_t *ids;")
     h.append("    uint8_t         count;")

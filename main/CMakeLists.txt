@@ -24,6 +24,7 @@ idf_component_register(
         "main.c"
         "led.c"
         "can/mcp251xfd.c"
+        "can/mcp251xfd_stream.c"
         "can/can_manager.c"
         "can/can_filter.c"
         "can/dbc/dbc.c"
