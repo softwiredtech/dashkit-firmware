@@ -12,6 +12,7 @@ static const char *TAG = "auto_mgr";
 // Each automation lives in its own .c file and defines a single automation_t;
 // list it here (and in main/CMakeLists.txt SRCS) to activate it.
 extern automation_t wiper_off_automation;
+extern automation_t auto_high_beam_automation;
 extern automation_t multi_finger_automation;
 extern automation_t battery_preheat_automation;
 extern automation_t climate_keep_automation;
@@ -20,6 +21,7 @@ extern automation_t ac_swing_automation;
 
 static automation_t *const g_automations[] = {
     &wiper_off_automation,
+    &auto_high_beam_automation,
     &multi_finger_automation,
     &battery_preheat_automation,
     &climate_keep_automation,
