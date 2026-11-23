@@ -124,12 +124,20 @@ static void can_to_ble_task(void *arg)
                 count++;
             }
 
-            // Send over BLE if connected
-            if (ble_server_is_connected()) {
-                size_t pkt_len = build_ble_packet(batch, count, ble_buf, sizeof(ble_buf));
-                if (pkt_len > 0) {
-                    ble_server_notify(ble_buf, pkt_len);
+            // Send over BLE if connected. NimBLE truncates a notification to
+            // ATT_MTU - 3, so split the batch into packets that fit.
+            size_t max = ble_server_notify_max();
+            if (max > sizeof(ble_buf)) {
+                max = sizeof(ble_buf);
+            }
+            int sent = 0;
+            while (sent < count && max > 0) {
+                size_t pkt_len = build_ble_packet(&batch[sent], count - sent, ble_buf, max);
+                if (pkt_len == 0 || ble_buf[0] == 0) {
+                    break;
                 }
+                ble_server_notify(ble_buf, pkt_len);
+                sent += ble_buf[0];
             }
         }
     }
