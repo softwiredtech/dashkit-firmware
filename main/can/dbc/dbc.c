@@ -11,6 +11,9 @@ static const char *TAG = "dbc";
 
 // Rolling counter state, one slot per message (auto-incremented on send).
 static uint32_t s_counter[DBC_MESSAGE_COUNT];
+// Several tasks send (vehicle control, injectors, timers); the increment must
+// not hand two frames of one message the same counter value.
+static portMUX_TYPE s_counter_mux = portMUX_INITIALIZER_UNLOCKED;
 
 // Latest-frame cache, one slot per DBC message (mirrors opendbc's CANParser
 // `vl`): every received frame whose id matches a known message is kept by
@@ -178,8 +181,11 @@ static void frame_finalize(dbc_msg_t mi, can_frame_t *f)
     if (m->counter_sig >= 0) {
         const dbc_signal_t *cs = &g_dbc_signals[m->counter_sig];
         uint32_t mask = (cs->length >= 32) ? ~0u : ((1u << cs->length) - 1u);
-        s_counter[mi] = (s_counter[mi] + 1) & mask;
-        dbc_pack(f->data, m->counter_sig, (int64_t)s_counter[mi]);
+        portENTER_CRITICAL(&s_counter_mux);
+        uint32_t counter = (s_counter[mi] + 1) & mask;
+        s_counter[mi] = counter;
+        portEXIT_CRITICAL(&s_counter_mux);
+        dbc_pack(f->data, m->counter_sig, (int64_t)counter);
     }
 
     if (m->checksum_algo == DBC_CKSUM_TESLA_BYTESUM && m->checksum_sig >= 0) {
@@ -328,6 +334,9 @@ esp_err_t dbc_counter_seed_from_bus(uint8_t bus, const char *msg)
     if (cache_get(mi, &f) != ESP_OK) {
         return ESP_ERR_NOT_FOUND;
     }
-    s_counter[mi] = (uint32_t)dbc_unpack(f.data, (dbc_sig_t)m->counter_sig);
+    uint32_t seed = (uint32_t)dbc_unpack(f.data, (dbc_sig_t)m->counter_sig);
+    portENTER_CRITICAL(&s_counter_mux);
+    s_counter[mi] = seed;
+    portEXIT_CRITICAL(&s_counter_mux);
     return ESP_OK;
 }
