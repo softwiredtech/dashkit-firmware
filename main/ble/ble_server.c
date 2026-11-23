@@ -149,6 +149,27 @@ static bool peer_is_bonded(const ble_addr_t *peer_id_addr)
     return false;
 }
 
+// Key-store overflow policy. Outside pairing mode a new bond is rejected at
+// ENC_CHANGE anyway, but its keys are written before that; evicting the
+// oldest bond to make room for them would let a stranger push out every
+// paired phone one pairing attempt at a time. So only evict while pairing
+// mode is open; otherwise the write fails and nothing is stored.
+static int store_status_cb(struct ble_store_status_event *event, void *arg)
+{
+    if (event->event_code == BLE_STORE_EVENT_OVERFLOW && !s_pairing_mode) {
+        switch (event->overflow.obj_type) {
+        case BLE_STORE_OBJ_TYPE_OUR_SEC:
+        case BLE_STORE_OBJ_TYPE_PEER_SEC:
+        case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+            ESP_LOGW(TAG, "Bond store full and not in pairing mode; not evicting");
+            return BLE_HS_ESTORE_CAP;
+        default:
+            break;
+        }
+    }
+    return ble_store_util_status_rr(event, arg);
+}
+
 static uint32_t now_s(void)
 {
     return (uint32_t)(esp_timer_get_time() / 1000000);
@@ -839,9 +860,9 @@ esp_err_t ble_server_init(void)
     ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-    // On key-store overflow, evict the oldest entry instead of failing the
-    // pairing (matters when a new phone pairs with MAX_BONDS already stored).
-    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+    // On key-store overflow, evict the oldest bond to make room for a phone
+    // pairing during an open window (see store_status_cb).
+    ble_hs_cfg.store_status_cb = store_status_cb;
 
     // Wire up the NVS-backed key store so bonds survive a reboot.
     ble_store_config_init();
