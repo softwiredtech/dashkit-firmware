@@ -87,12 +87,20 @@ typedef enum {
     // Config only, not persisted. value is ignored.
     VC_CMD_AC_SWING_TOGGLE = 0x4E,
 
+    // --- Turn signal off in Park (DAS_bodyControls 0x3E9) ---
+    // Config only, persisted in NVS. 1=enable, 0=disable.
+    // Not 0x4F: that is the BLE read-only role (upstream PR #87).
+    VC_CMD_SIGNAL_OFF_ENABLE = 0x53,
+
     // --- Door unlatch (VCSEC_requests 0x1F9) ---
     // Pops one door latch like the Tesla app's "Unlatch Door": the per-door
     // ClosureRequest = OPEN with reason RKE, held ~800 ms at the car's own
     // 0x1F9 cadence. Refused while in R/N/D or moving.
     // value: 0=front left (driver), 1=front right, 2=rear left, 3=rear right.
     VC_CMD_DOOR_UNLATCH = 0x50,
+
+    // Config only, persisted in NVS. 1=enable, 0=disable.
+    VC_CMD_TOUCH_AUTO_HIGH_BEAM_ENABLE = 0x51,
 } vehicle_control_opcode_t;
 
 // RX hook (called by can_manager for every received frame): phase-locks an

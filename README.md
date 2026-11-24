@@ -37,17 +37,16 @@ DashPilot sends these commands to DashKit, and DashKit turns them into CAN frame
 ## Live data for DashPilot
 
 - Two CAN buses (chassis + vehicle), each on its own MCP2518FD controller.
-- Hardware acceptance filters on each bus pass only the messages DashPilot uses, so no frames get dropped under load.
+- Both buses are received in full, in chunks. The firmware's own features act on the messages listed in `dbc/used_messages.txt`; the app gets the messages it asked for (or, if it hasn't asked, the listed ones).
 - An on-device DBC signal layer decodes and caches the latest value of every message it tracks. Automations read signals by name rather than by raw bytes.
 - Frames are streamed to the phone over an encrypted, bonded BLE link.
 
 ## Interior ambient lighting
 
 Vehicle CAN (bus 1) ID **0x679**, `UI_ambientLightingCtrls`, is forwarded
-unchanged over the CAN BLE stream. This uses one additional hardware filter
-slot (28 of 32 on the vehicle controller). The message is filter-only; the app
-decodes it. Apps installing a nonempty CAN filter must include bus 1 / 0x679
-alongside their other entries.
+unchanged over the CAN BLE stream. The message is filter-only in
+`dbc/used_messages.txt`; the app decodes it. Apps installing a nonempty CAN
+filter must include bus 1 / 0x679 alongside their other entries.
 
 The supplied newer Tesla database layout uses zero-based byte offsets:
 
@@ -170,15 +169,13 @@ Options under `idf.py menuconfig` → **DashKit**:
 | `CONFIG_DASHKIT_BTHOME` | n | BTHome / Shelly BLU button listener |
 | `CONFIG_DASHKIT_BTHOME_ALLOWED` | "" | Comma-separated button addresses allowed to trigger controls (from the "BTHome device … seen" log line) |
 
-For verbose CAN frame and status logging, uncomment `CONFIG_DASHKIT_DEBUG_LOG=y` in `sdkconfig.defaults`.
-
 Run `idf.py fullclean && idf.py build` after changing options.
 
 ## Project Layout
 
 | Path | Contents |
 |------|----------|
-| `main/can/` | MCP251xFD driver, CAN manager, HW filters, DBC signal layer |
+| `main/can/` | MCP251xFD driver, CAN manager, app CAN filter, DBC signal layer |
 | `main/ble/` | NimBLE GATT server, OTA service, app channel |
 | `main/controls/` | Vehicle control commands, battery preheat |
 | `main/automation/` | One file per automation, plus the registry |

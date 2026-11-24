@@ -93,13 +93,15 @@ static bool is_config_opcode(uint8_t opcode)
     return opcode == VC_CMD_BATTERY_PREHEAT ||
            opcode == VC_CMD_MULTI_FINGER_ACTION ||
            opcode == VC_CMD_WIPER_OFF_ENABLE ||
+           opcode == VC_CMD_TOUCH_AUTO_HIGH_BEAM_ENABLE ||
            opcode == VC_CMD_CLIMATE_KEEP_ENABLE ||
            opcode == VC_CMD_CLIMATE_KEEP_DURATION ||
            opcode == VC_CMD_SPORT_KICKDOWN_ENABLE ||
            opcode == VC_CMD_SPORT_KICKDOWN_THRESHOLD ||
            opcode == VC_CMD_AC_SWING_TOGGLE ||
            opcode == VC_CMD_AC_SWING_SIDE ||
-           opcode == VC_CMD_AC_SWING_INTENSITY;
+           opcode == VC_CMD_AC_SWING_INTENSITY ||
+           opcode == VC_CMD_SIGNAL_OFF_ENABLE;
 }
 
 static const vc_command_t *find_command(uint8_t opcode)
