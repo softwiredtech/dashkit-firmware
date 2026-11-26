@@ -14,6 +14,8 @@ static const char *TAG = "auto_high_beam";
 #define HOLD_US             1500000
 #define MAX_GAP_US          500000  // Allow for interleaved switch-status mux pages.
 #define CONTROL_MAX_AGE_MS  1000
+#define LIGHTING_MSG        "VCFRONT_lightingJuniper"
+#define HIGH_BEAM_DAS_AUTO  3
 #define BODY_CONTROL_MSG    "DAS_bodyControls"
 #define UI_CONTROL_MSG      "UI_vehicleControl"
 
@@ -31,6 +33,8 @@ static int64_t s_hold_start_us;
 static const dbc_message_t *s_switch_msg;
 static dbc_sig_t s_button_sig;
 static dbc_sig_t s_mux_sig;
+static const dbc_message_t *s_lighting_msg;
+static dbc_sig_t s_high_beam_state_sig;
 static const dbc_message_t *s_body_control_msg;
 static dbc_sig_t s_override_sig;
 static const dbc_message_t *s_ui_control_msg;
@@ -49,6 +53,12 @@ static void auto_high_beam_init(automation_t *self)
             s_switch_msg = &g_dbc_messages[msg];
             s_body_control_msg = &g_dbc_messages[control];
         }
+    }
+
+    dbc_msg_t lighting = dbc_msg(LIGHTING_MSG);
+    s_high_beam_state_sig = dbc_sig(lighting, "VCFRONT_highBeamControlState");
+    if (s_high_beam_state_sig >= 0) {
+        s_lighting_msg = &g_dbc_messages[lighting];
     }
 
     dbc_msg_t ui_control = dbc_msg(UI_CONTROL_MSG);
@@ -104,11 +114,18 @@ static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t
     }
     portEXIT_CRITICAL(&s_lock);
 
-    if (!send || !can_msg_fresh(BODY_CONTROL_MSG, CONTROL_MAX_AGE_MS)) {
+    if (!send || !s_lighting_msg || !can_msg_fresh(LIGHTING_MSG, CONTROL_MAX_AGE_MS) ||
+        !can_msg_fresh(BODY_CONTROL_MSG, CONTROL_MAX_AGE_MS)) {
         return;
     }
-    uint8_t bus = s_body_control_msg->default_bus;
     can_frame_t control;
+    if (can_frame_live(s_lighting_msg->default_bus, LIGHTING_MSG, &control) != ESP_OK ||
+        control.dlc != s_lighting_msg->dlc || control.extended ||
+        dbc_unpack(control.data, s_high_beam_state_sig) == HIGH_BEAM_DAS_AUTO) {
+        return;
+    }
+
+    uint8_t bus = s_body_control_msg->default_bus;
     if (can_frame_live(bus, BODY_CONTROL_MSG, &control) != ESP_OK ||
         control.dlc != s_body_control_msg->dlc || control.extended) {
         return;
