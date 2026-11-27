@@ -354,7 +354,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
                  slot->handle, slot->peer_was_bonded, slot->encrypted,
                  slot->subscribed, bond_count(), conn_count(), MAX_CONNS);
         ble_att_set_preferred_mtu(512);
-        ble_gattc_exchange_mtu(slot->handle, NULL, NULL);
+        // Let the phone initiate MTU exchange so it can sequence discovery.
+        // ble_gattc_exchange_mtu(slot->handle, NULL, NULL);
         // Keep advertising while slots remain.
         start_advertising();
         break;
