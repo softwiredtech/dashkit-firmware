@@ -1,0 +1,116 @@
+name: PR firmware
+run-name: Firmware for PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-firmware-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    name: Downloadable firmware
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build the PR's own commit so the download matches the selected PR.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Compute build identifiers and cache keys
+        id: build
+        run: |
+          short_sha=$(git rev-parse --short=7 HEAD)
+          echo "version=pr-${PR_NUMBER}-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "idf=$(git ls-tree --object-only HEAD esp-idf)" >> "$GITHUB_OUTPUT"
+          echo "py=$(python3 -V | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache ESP-IDF and tools
+        id: cache-idf
+        uses: actions/cache@v4
+        with:
+          path: |
+            esp-idf
+            .git/modules/esp-idf
+            ~/.espressif
+          key: idf-${{ runner.os }}-${{ steps.build.outputs.idf }}-${{ steps.build.outputs.py }}
+
+      - name: Fetch ESP-IDF and install toolchain
+        if: steps.cache-idf.outputs.cache-hit != 'true'
+        run: |
+          git submodule update --init --recursive
+          ./esp-idf/install.sh esp32s3
+
+      - name: Cache compiler outputs
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: pr-ccache-${{ runner.os }}-${{ steps.build.outputs.idf }}-${{ env.SOURCE_SHA }}
+          restore-keys: pr-ccache-${{ runner.os }}-${{ steps.build.outputs.idf }}-
+
+      - name: Install ccache
+        run: sudo apt-get update -qq && sudo apt-get install -y ccache
+
+      - name: Build app and USB firmware
+        env:
+          FIRMWARE_VERSION: ${{ steps.build.outputs.version }}
+          IDF_CCACHE_ENABLE: '1'
+          CCACHE_DIR: /home/runner/.ccache
+        run: |
+          . ./esp-idf/export.sh
+          idf.py -D PROJECT_VER="$FIRMWARE_VERSION" build
+          idf.py merge-bin
+
+      - name: Package firmware and build details
+        env:
+          FIRMWARE_VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp build/dashkit-firmware.bin dist/dashkit-firmware.bin
+          cp build/merged-binary.bin dist/dashkit-firmware-usb.bin
+          python3 - <<'PY'
+          import json, os, pathlib
+          info = {
+              "pull_request": int(os.environ["PR_NUMBER"]),
+              "commit": os.environ["SOURCE_SHA"],
+              "version": os.environ["FIRMWARE_VERSION"],
+              "target": "esp32s3",
+              "run_url": f'{os.environ["GITHUB_SERVER_URL"]}/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["GITHUB_RUN_ID"]}',
+          }
+          pathlib.Path("dist/build-info.json").write_text(json.dumps(info, indent=2) + "\n")
+          PY
+          cd dist
+          sha256sum ./*.bin > SHA256SUMS.txt
+
+      - name: Upload PR firmware
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashkit-${{ steps.build.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+      - name: Show firmware download
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          FIRMWARE_VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          {
+            printf '## Firmware for PR #%s\n\n' "$PR_NUMBER"
+            printf '[Download firmware ZIP](%s)\n\n' "$ARTIFACT_URL"
+            printf 'Version: `%s`  \nCommit: `%s`\n\n' "$FIRMWARE_VERSION" "$SOURCE_SHA"
+            printf -- '- **App update:** extract and select `dashkit-firmware.bin`.\n'
+            printf -- '- **USB flashing:** use `dashkit-firmware-usb.bin` at address `0x0`.\n'
+            printf -- '- Includes `SHA256SUMS.txt` and `build-info.json`.\n'
+            printf '\nDownload requires signing in to GitHub. Artifacts are retained for 30 days.\n'
+          } >> "$GITHUB_STEP_SUMMARY"

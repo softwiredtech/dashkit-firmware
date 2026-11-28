@@ -118,6 +118,47 @@ idf.py flash monitor
 
 Press `Ctrl+]` to exit the serial monitor.
 
+## Pull request firmware downloads
+
+Each pull request runs the **PR firmware / Downloadable firmware** check when
+opened, updated, or reopened. It builds the PR's head commit with the pinned
+ESP-IDF toolchain. Host regression tests continue running in the existing CI.
+
+1. Open the pull request's **Checks** tab.
+2. Open **PR firmware**, then follow **Details** to the workflow run.
+3. Use **Download firmware ZIP** in the run summary, or select the
+   `dashkit-pr-<number>-<commit>` artifact under **Artifacts**.
+4. Extract the ZIP and select **`dashkit-firmware.bin`** in the app's firmware
+   file picker. The **`dashkit-firmware-usb.bin`** image is for USB flashing at
+   address `0x0`.
+
+The ZIP also contains checksums and `build-info.json` with the PR number and
+source commit. The firmware reports version `pr-<number>-<commit>`. Downloads
+require signing in to GitHub and expire after 30 days. Each new PR commit gets
+its own artifact; use the latest successful run for the current code.
+
+## GitHub releases
+
+Pushing a new tag (for example, `git push origin v0.3.2`) runs
+`.github/workflows/release.yml`. It builds the tagged source with the pinned
+ESP-IDF submodule and publishes the firmware to a GitHub release:
+
+- `dashkit-firmware.bin`: application binary for OTA updates.
+- `dashkit-firmware-usb.bin`: complete flash image including the bootloader
+  and partition table; flash this image
+  at address `0x0` over USB.
+- `SHA256SUMS.txt`: binary checksums.
+
+The release is published only after the build succeeds. Build artifacts are also
+available on the workflow run for 14 days; release assets remain available
+until the release or assets are deleted. Re-running the workflow replaces the
+assets on an existing release for that tag.
+
+Release notes list commit subjects and short hashes since the nearest previous
+tag in the release commit's ancestry, oldest first. The first release includes
+the full commit history. Re-running the workflow also refreshes these notes.
+
+
 ### Configuration
 
 Options under `idf.py menuconfig` → **DashKit**:

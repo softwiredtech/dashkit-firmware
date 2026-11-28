@@ -1,0 +1,99 @@
+name: Release firmware
+
+on:
+  push:
+    tags:
+      - '**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # ESP-IDF uses git describe for the application version.
+          fetch-depth: 0
+
+      - name: Install pinned ESP-IDF toolchain
+        run: ./esp-idf/install.sh esp32s3
+
+      - name: Build application and USB flash image
+        run: |
+          . ./esp-idf/export.sh
+          idf.py build
+          idf.py merge-bin
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp build/dashkit-firmware.bin dist/dashkit-firmware.bin
+          cp build/merged-binary.bin dist/dashkit-firmware-usb.bin
+          cd dist
+          sha256sum ./*.bin > SHA256SUMS.txt
+
+      - name: Save build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: dist
+
+      - name: Verify checksums
+        run: |
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Generate release notes from commit messages
+        run: |
+          current_commit=$(git rev-parse "${GITHUB_REF}^{commit}")
+          # Search ancestors so the release tag itself is never the baseline.
+          previous_tag=$(git describe --tags --abbrev=0 "${current_commit}^" 2>/dev/null || true)
+          if [[ -n "$previous_tag" ]]; then
+            range="refs/tags/${previous_tag}..${current_commit}"
+            printf '## Commits since %s\n\n' "$previous_tag" > release-notes.md
+          else
+            range="$current_commit"
+            printf '## Commits in this first release\n\n' > release-notes.md
+          fi
+          git log --reverse --format='- %s (%h)' "$range" -- >> release-notes.md
+
+      - name: Create release and attach binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" dist/* \
+              --verify-tag --title "$RELEASE_TAG" --notes-file release-notes.md
+          fi
