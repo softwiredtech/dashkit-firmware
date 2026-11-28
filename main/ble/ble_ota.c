@@ -49,6 +49,9 @@ static uint32_t s_fw_size = 0;
 static uint32_t s_received = 0;
 static bool s_ota_in_progress = false;
 static uint32_t s_last_progress_notify = 0;
+// The link that began the update: only it may send data or abort, status goes
+// to it, and its disconnect aborts the update.
+static uint16_t s_ota_conn = BLE_HS_CONN_HANDLE_NONE;
 
 // BLE handles
 static uint16_t s_ota_status_val_handle;
@@ -58,7 +61,7 @@ static uint16_t s_ota_status_val_handle;
 // ---------------------------------------------------------------------------
 static void send_status(uint8_t code, const uint8_t *payload, size_t payload_len)
 {
-    uint16_t conn = ble_server_get_conn_handle();
+    uint16_t conn = s_ota_conn;
     if (conn == BLE_HS_CONN_HANDLE_NONE) return;
 
     uint8_t buf[6];
@@ -101,6 +104,7 @@ static void ota_cleanup(void)
     s_received = 0;
     s_ota_in_progress = false;
     s_last_progress_notify = 0;
+    s_ota_conn = BLE_HS_CONN_HANDLE_NONE;
 }
 
 static void reboot_timer_cb(void *arg)
@@ -113,17 +117,23 @@ static void reboot_timer_cb(void *arg)
 // OTA command handling
 // ---------------------------------------------------------------------------
 // Returns true on success, false on failure (ATT error should be returned)
-static bool handle_begin(const uint8_t *data, uint16_t len)
+static bool handle_begin(uint16_t conn, const uint8_t *data, uint16_t len)
 {
+    // Errors go to the link that asked. A malformed BEGIN is rejected before it
+    // touches a transfer another link is running, so that transfer keeps its owner.
+    uint16_t prev = s_ota_in_progress ? s_ota_conn : BLE_HS_CONN_HANDLE_NONE;
+    s_ota_conn = conn;
     if (len < 5) {
         ESP_LOGE(TAG, "Begin command too short");
         send_error(0x01);
+        s_ota_conn = prev;
         return false;
     }
 
     if (s_ota_in_progress) {
         ESP_LOGW(TAG, "OTA already in progress, aborting previous");
         ota_cleanup();
+        s_ota_conn = conn;
     }
 
     s_fw_size = data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24);
@@ -247,7 +257,6 @@ static void handle_data(const uint8_t *data, uint16_t len)
 static int ota_ctrl_access(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    (void)conn_handle;
     (void)attr_handle;
     (void)arg;
 
@@ -264,11 +273,24 @@ static int ota_ctrl_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (buf[0]) {
     case OTA_CMD_BEGIN:
-        if (!handle_begin(buf, copy_len)) {
+        // Only the active phone may start an update.
+        if (conn_handle != ble_server_get_conn_handle()) {
+            ESP_LOGW(TAG, "OTA begin from non-active handle %d rejected", conn_handle);
+            return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+        }
+        if (!handle_begin(conn_handle, buf, copy_len)) {
+            // No transfer was started. Any earlier one has either been aborted
+            // (no owner) or left alone (owner restored by handle_begin).
+            if (!s_ota_in_progress) {
+                s_ota_conn = BLE_HS_CONN_HANDLE_NONE;
+            }
             return BLE_ATT_ERR_UNLIKELY;
         }
         break;
     case OTA_CMD_ABORT:
+        if (s_ota_in_progress && conn_handle != s_ota_conn) {
+            return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+        }
         handle_abort();
         break;
     default:
@@ -282,12 +304,15 @@ static int ota_ctrl_access(uint16_t conn_handle, uint16_t attr_handle,
 static int ota_data_access(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    (void)conn_handle;
     (void)attr_handle;
     (void)arg;
 
     if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
         return BLE_ATT_ERR_REQ_NOT_SUPPORTED;
+    }
+
+    if (s_ota_in_progress && conn_handle != s_ota_conn) {
+        return BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
     }
 
     uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
@@ -371,9 +396,9 @@ esp_err_t ble_ota_init(void)
     return ESP_OK;
 }
 
-void ble_ota_on_disconnect(void)
+void ble_ota_on_disconnect(uint16_t conn_handle)
 {
-    if (s_ota_in_progress) {
+    if (s_ota_in_progress && conn_handle == s_ota_conn) {
         ESP_LOGW(TAG, "BLE disconnected during OTA, aborting");
         ota_cleanup();
     }
@@ -382,4 +407,9 @@ void ble_ota_on_disconnect(void)
 bool ble_ota_is_in_progress(void)
 {
     return s_ota_in_progress;
+}
+
+uint16_t ble_ota_conn_handle(void)
+{
+    return s_ota_in_progress ? s_ota_conn : BLE_HS_CONN_HANDLE_NONE;
 }
