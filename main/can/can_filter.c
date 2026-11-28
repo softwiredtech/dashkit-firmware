@@ -8,29 +8,43 @@
 
 static const char *TAG = "can_filter";
 
-// Maximum number of (bus, addr) entries the filter can hold.
-#define CAN_FILTER_MAX_ENTRIES  256
+// Entries per device: one 512-byte filter write holds at most 127.
+#define CAN_FILTER_MAX_ENTRIES  128
 
 typedef struct {
     uint8_t  bus_id;
     uint32_t addr;
 } can_filter_entry_t;
 
-static can_filter_entry_t s_entries[CAN_FILTER_MAX_ENTRIES];
-static volatile size_t    s_count = 0;
-static SemaphoreHandle_t  s_lock = NULL;
-
 // The per-frame checks run in the CAN receive tasks for every frame on both buses, so for standard ids on
 // the two CAN buses they are one bit lookup with no lock:
 //   s_used: the ids dbc/used_messages.txt lists (fixed).
-//   s_app:  the app's list. The writer fills the set readers are not using and then switches s_app_idx, so a
-//           reader sees the old list or the new one.
-// Anything else (a bus the firmware injects, an extended id) is rare and goes through the locked list.
+//   a set:  which standard ids go on, and whether the used_messages.txt ids do too. There is one per device
+//           and one for the union of all of them. The writer fills the copy readers are not using and then
+//           switches its index, so a reader sees the old set or the new one.
+// Anything else (a bus the firmware injects, an extended id) is rare and goes through the locked lists.
 #define FILTER_BUSES  2
 #define FILTER_WORDS  64   // 2048 standard ids / 32
+
+typedef struct {
+    uint32_t bits[FILTER_BUSES][FILTER_WORDS];
+    bool     used;   // the used_messages.txt ids as well
+} filter_set_t;
+
+typedef struct {
+    bool               open;      // a device is connected in this slot
+    bool               has_list;  // it wrote a list; otherwise it gets the used_messages.txt ids
+    size_t             count;
+    can_filter_entry_t entries[CAN_FILTER_MAX_ENTRIES];
+    filter_set_t       set[2];
+    volatile uint8_t   idx;
+} slot_t;
+
+static slot_t            s_slots[CAN_FILTER_SLOTS];
+static filter_set_t      s_union[2];
+static volatile uint8_t  s_union_idx;
+static SemaphoreHandle_t s_lock = NULL;
 static uint32_t          s_used[FILTER_BUSES][FILTER_WORDS];
-static uint32_t          s_app[2][FILTER_BUSES][FILTER_WORDS];
-static volatile uint8_t  s_app_idx;
 static bool              s_used_built;
 
 static inline bool bit_test(const uint32_t *bits, uint32_t id) { return (bits[id >> 5] >> (id & 31)) & 1u; }
@@ -49,13 +63,49 @@ static void build_used(void)
     s_used_built = true;
 }
 
+static void set_add_list(filter_set_t *w, const slot_t *s)
+{
+    if (!s->has_list) {
+        w->used = true;
+        return;
+    }
+    for (size_t i = 0; i < s->count; i++) {
+        if (fast_path(s->entries[i].bus_id, s->entries[i].addr)) {
+            bit_set(w->bits[s->entries[i].bus_id], s->entries[i].addr);
+        }
+    }
+}
+
+// Rebuild the set of `slot` and the union of every connected device. Caller holds s_lock.
+static void rebuild(uint8_t slot)
+{
+    slot_t *s = &s_slots[slot];
+    filter_set_t *w = &s->set[s->idx ^ 1];
+    memset(w, 0, sizeof(*w));
+    if (s->open) set_add_list(w, s);
+    s->idx ^= 1;
+
+    filter_set_t *u = &s_union[s_union_idx ^ 1];
+    memset(u, 0, sizeof(*u));
+    bool any = false;
+    for (uint8_t i = 0; i < CAN_FILTER_SLOTS; i++) {
+        if (!s_slots[i].open) continue;
+        set_add_list(u, &s_slots[i]);
+        any = true;
+    }
+    if (!any) u->used = true;   // no device: what the hardware filters used to accept
+    s_union_idx ^= 1;
+}
+
 esp_err_t can_filter_init(void)
 {
     build_used();
     if (s_lock) return ESP_OK;
     s_lock = xSemaphoreCreateMutex();
     if (!s_lock) return ESP_ERR_NO_MEM;
-    s_count = 0;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    rebuild(0);
+    xSemaphoreGive(s_lock);
     return ESP_OK;
 }
 
@@ -64,21 +114,32 @@ bool can_filter_is_used(uint8_t bus_id, uint32_t addr)
     return fast_path(bus_id, addr) && bit_test(s_used[bus_id], addr);
 }
 
-esp_err_t can_filter_set(const uint8_t *data, size_t len)
+static void set_open(uint8_t slot, bool open)
+{
+    if (!s_lock || slot >= CAN_FILTER_SLOTS) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_slots[slot].open = open;
+    s_slots[slot].has_list = false;
+    s_slots[slot].count = 0;
+    rebuild(slot);
+    xSemaphoreGive(s_lock);
+}
+
+void can_filter_open(uint8_t slot) { set_open(slot, true); }
+void can_filter_close(uint8_t slot) { set_open(slot, false); }
+
+esp_err_t can_filter_set(uint8_t slot, const uint8_t *data, size_t len)
 {
     if (!s_lock) return ESP_ERR_INVALID_STATE;
+    if (slot >= CAN_FILTER_SLOTS) return ESP_ERR_INVALID_ARG;
 
-    // Parse directly into s_entries under the lock to avoid a large
-    // stack-allocated scratch buffer (the BLE host task that calls this
-    // has a relatively small stack). s_count is only advanced on success,
-    // so readers see either the previous or the new table.
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-
+    // Parse into a static scratch list first (the BLE host task that calls this has a small stack; only that
+    // task writes filters): a malformed write leaves the device's previous list in place.
+    static can_filter_entry_t parsed[CAN_FILTER_MAX_ENTRIES];
     size_t new_count = 0;
     size_t offset = 0;
     while (offset < len) {
         if (offset + 2 > len) {
-            xSemaphoreGive(s_lock);
             ESP_LOGW(TAG, "Truncated header at offset %u", (unsigned)offset);
             return ESP_ERR_INVALID_ARG;
         }
@@ -86,16 +147,13 @@ esp_err_t can_filter_set(const uint8_t *data, size_t len)
         uint8_t num_addr = data[offset++];
 
         if (offset + (size_t)num_addr * 4 > len) {
-            xSemaphoreGive(s_lock);
             ESP_LOGW(TAG, "Truncated address list for bus %u", bus_id);
             return ESP_ERR_INVALID_ARG;
         }
 
         for (uint8_t i = 0; i < num_addr; i++) {
             if (new_count >= CAN_FILTER_MAX_ENTRIES) {
-                xSemaphoreGive(s_lock);
-                ESP_LOGW(TAG, "Filter table overflow (%d entries max)",
-                         CAN_FILTER_MAX_ENTRIES);
+                ESP_LOGW(TAG, "Filter table overflow (%d entries max)", CAN_FILTER_MAX_ENTRIES);
                 return ESP_ERR_NO_MEM;
             }
             uint32_t addr = ((uint32_t)data[offset + 0]      ) |
@@ -103,60 +161,67 @@ esp_err_t can_filter_set(const uint8_t *data, size_t len)
                             ((uint32_t)data[offset + 2] << 16) |
                             ((uint32_t)data[offset + 3] << 24);
             offset += 4;
-
-            s_entries[new_count].bus_id = bus_id;
-            s_entries[new_count].addr   = addr;
+            parsed[new_count].bus_id = bus_id;
+            parsed[new_count].addr   = addr;
             new_count++;
         }
     }
 
-    if (new_count == 0) {
-        // Back to the used_messages.txt ids. The bitmaps stay as they are: a
-        // reader that already saw the old count finishes on the old list.
-        s_count = 0;
-    } else {
-        // Mirror the list into the set readers are not using, then switch to it.
-        uint8_t next = s_app_idx ^ 1;
-        memset(s_app[next], 0, sizeof(s_app[next]));
-        for (size_t i = 0; i < new_count; i++) {
-            if (fast_path(s_entries[i].bus_id, s_entries[i].addr)) {
-                bit_set(s_app[next][s_entries[i].bus_id], s_entries[i].addr);
-            }
-        }
-        s_app_idx = next;
-        s_count = new_count;
-    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    slot_t *s = &s_slots[slot];
+    memcpy(s->entries, parsed, new_count * sizeof(parsed[0]));
+    s->count = new_count;
+    s->has_list = new_count > 0;
+    s->open = true;
+    rebuild(slot);
     xSemaphoreGive(s_lock);
 
-    ESP_LOGI(TAG, "Filter updated from %u-byte write: %u entries%s",
-             (unsigned)len, (unsigned)new_count,
-             new_count == 0 ? " (used_messages.txt ids)" : "");
+    ESP_LOGI(TAG, "Filter for slot %u from %u-byte write: %u entries%s", (unsigned)slot,
+             (unsigned)len, (unsigned)new_count, new_count == 0 ? " (used_messages.txt ids)" : "");
     for (size_t i = 0; i < new_count; i++) {
-        // Safe to read s_entries here without the lock: only this task
-        // (the BLE host task) ever writes to the table.
-        ESP_LOGI(TAG, "  [%u] bus=%u addr=0x%03lX",
-                 (unsigned)i, s_entries[i].bus_id,
-                 (unsigned long)s_entries[i].addr);
+        ESP_LOGI(TAG, "  [%u] bus=%u addr=0x%03lX", (unsigned)i, parsed[i].bus_id, (unsigned long)parsed[i].addr);
     }
     return ESP_OK;
 }
 
-// The controllers receive both buses in full, so an empty filter can't mean "everything": it forwards the ids
-// dbc/used_messages.txt lists for that bus, which is what the hardware filters used to accept.
+static bool set_has(const filter_set_t *f, uint8_t bus_id, uint32_t addr)
+{
+    return (f->used && bit_test(s_used[bus_id], addr)) || bit_test(f->bits[bus_id], addr);
+}
+
+// A non-standard frame: in a device's list as an exact entry? Caller holds s_lock.
+static bool slot_lists(const slot_t *s, uint8_t bus_id, uint32_t addr)
+{
+    if (!s->open || !s->has_list) return false;
+    for (size_t i = 0; i < s->count; i++) {
+        if (s->entries[i].bus_id == bus_id && s->entries[i].addr == addr) return true;
+    }
+    return false;
+}
+
+// The controllers receive both buses in full, so a device without a list can't mean "everything": it gets the
+// ids dbc/used_messages.txt lists for that bus, which is what the hardware filters used to accept.
 bool can_filter_should_forward(uint8_t bus_id, uint32_t addr)
 {
     build_used();
-    if (!s_lock || s_count == 0) return can_filter_is_used(bus_id, addr);
-    if (fast_path(bus_id, addr)) return bit_test(s_app[s_app_idx][bus_id], addr);
+    if (!s_lock) return can_filter_is_used(bus_id, addr);
+    if (fast_path(bus_id, addr)) return set_has(&s_union[s_union_idx], bus_id, addr);
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    size_t count = s_count;
     bool match = false;
-    for (size_t i = 0; i < count && !match; i++) {
-        if (s_entries[i].bus_id == bus_id && s_entries[i].addr == addr) {
-            match = true;
-        }
-    }
+    for (uint8_t i = 0; i < CAN_FILTER_SLOTS && !match; i++) match = slot_lists(&s_slots[i], bus_id, addr);
+    xSemaphoreGive(s_lock);
+    return match;
+}
+
+bool can_filter_wants(uint8_t slot, uint8_t bus_id, uint32_t addr)
+{
+    if (slot >= CAN_FILTER_SLOTS || !s_lock) return false;
+    const slot_t *s = &s_slots[slot];
+    if (fast_path(bus_id, addr)) return set_has(&s->set[s->idx], bus_id, addr);
+
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    bool match = slot_lists(s, bus_id, addr);
     xSemaphoreGive(s_lock);
     return match;
 }

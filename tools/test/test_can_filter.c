@@ -1,5 +1,6 @@
-// Host unit tests for the app CAN filter (main/can/can_filter.c): what is forwarded to the app, and which
-// frames the firmware's own hooks run for, now that the controllers deliver every frame on both buses.
+// Host unit tests for the CAN filters (main/can/can_filter.c): what each connected device gets, what is
+// forwarded at all, and which frames the firmware's own hooks run for, now that the controllers deliver every
+// frame on both buses. The single-device cases use slot 0.
 // Runs against the real generated manifest tables. See tools/test/run_can_host_test.sh.
 
 #include "can_filter.h"
@@ -67,7 +68,7 @@ static void an_app_list_replaces_the_default_but_not_the_firmwares_set(void)
     size_t n = entry(buf, 1, (uint32_t[]){ extra }, 1);
     n += entry(buf + n, 0, (uint32_t[]){ 0x129 }, 1);
     n += entry(buf + n, 2, (uint32_t[]){ 0x321, 0x18DAF110 }, 2);     // an injected bus, an extended id
-    CHECK(can_filter_set(buf, n) == ESP_OK);
+    CHECK(can_filter_set(0, buf, n) == ESP_OK);
 
     CHECK(can_filter_should_forward(1, extra));            // any id, not only the manifest's
     CHECK(!can_filter_should_forward(0, extra));           // per bus
@@ -82,14 +83,14 @@ static void an_app_list_replaces_the_default_but_not_the_firmwares_set(void)
 
     // A second list replaces the first completely.
     n = entry(buf, 1, (uint32_t[]){ used }, 1);
-    CHECK(can_filter_set(buf, n) == ESP_OK);
+    CHECK(can_filter_set(0, buf, n) == ESP_OK);
     CHECK(can_filter_should_forward(1, used));
     CHECK(!can_filter_should_forward(1, extra));
     CHECK(!can_filter_should_forward(0, 0x129));
     CHECK(!can_filter_should_forward(2, 0x321));
 
     // Clearing it (the app disconnected) restores the default.
-    CHECK(can_filter_set(NULL, 0) == ESP_OK);
+    CHECK(can_filter_set(0, NULL, 0) == ESP_OK);
     CHECK(can_filter_should_forward(1, used));
     CHECK(!can_filter_should_forward(1, extra));
 }
@@ -99,12 +100,54 @@ static void a_malformed_list_changes_nothing(void)
     uint32_t used = g_dbc_hw_filters[1].ids[0], extra = not_listed(1);
     uint8_t buf[16];
     size_t n = entry(buf, 1, (uint32_t[]){ extra }, 1);
-    CHECK(can_filter_set(buf, n) == ESP_OK);
-    CHECK(can_filter_set(buf, n - 1) != ESP_OK);           // truncated address
-    CHECK(can_filter_set(buf, 1) != ESP_OK);               // truncated header
+    CHECK(can_filter_set(0, buf, n) == ESP_OK);
+    CHECK(can_filter_set(0, buf, n - 1) != ESP_OK);           // truncated address
+    CHECK(can_filter_set(0, buf, 1) != ESP_OK);               // truncated header
     CHECK(can_filter_should_forward(1, extra));
     CHECK(!can_filter_should_forward(1, used));
-    CHECK(can_filter_set(NULL, 0) == ESP_OK);
+    CHECK(can_filter_set(0, NULL, 0) == ESP_OK);
+}
+
+static void each_device_gets_its_own_ids(void)
+{
+    uint32_t used = g_dbc_hw_filters[1].ids[0], extra = not_listed(1);
+    uint8_t buf[32];
+
+    // Two devices, neither wrote a list: both get the manifest ids.
+    can_filter_open(0);
+    can_filter_open(1);
+    CHECK(can_filter_wants(0, 1, used) && can_filter_wants(1, 1, used));
+    CHECK(!can_filter_wants(0, 1, extra) && !can_filter_wants(1, 1, extra));
+
+    // Device 0 (a head-up display, say) asks for one id: only it gets that, and no longer the manifest ids.
+    size_t n = entry(buf, 1, (uint32_t[]){ extra }, 1);
+    CHECK(can_filter_set(0, buf, n) == ESP_OK);
+    CHECK(can_filter_wants(0, 1, extra) && !can_filter_wants(0, 1, used));
+    // Device 1 keeps its own set: the other device's short list does not cut it off.
+    CHECK(!can_filter_wants(1, 1, extra) && can_filter_wants(1, 1, used));
+    // What is forwarded at all is the union.
+    CHECK(can_filter_should_forward(1, extra) && can_filter_should_forward(1, used));
+
+    // Per device on the locked path too (a bus the firmware injects).
+    n = entry(buf, 2, (uint32_t[]){ 0x321 }, 1);
+    CHECK(can_filter_set(1, buf, n) == ESP_OK);
+    CHECK(can_filter_wants(1, 2, 0x321) && !can_filter_wants(0, 2, 0x321));
+    CHECK(can_filter_should_forward(2, 0x321));
+    CHECK(!can_filter_wants(1, 1, used));                 // device 1's list replaced its default
+
+    // Device 1 leaves: its list no longer counts; device 0 keeps its own.
+    can_filter_close(1);
+    CHECK(!can_filter_should_forward(2, 0x321) && !can_filter_wants(1, 2, 0x321));
+    CHECK(can_filter_should_forward(1, extra) && !can_filter_should_forward(1, used));
+
+    // Device 0 leaves too: with no device the manifest ids are forwarded again.
+    can_filter_close(0);
+    CHECK(can_filter_should_forward(1, used) && !can_filter_should_forward(1, extra));
+    CHECK(!can_filter_wants(0, 1, used));
+
+    // Slots out of range are refused.
+    CHECK(can_filter_set(CAN_FILTER_SLOTS, buf, n) == ESP_ERR_INVALID_ARG);
+    CHECK(!can_filter_wants(CAN_FILTER_SLOTS, 1, used));
 }
 
 int main(void)
@@ -112,6 +155,8 @@ int main(void)
     before_init_and_with_no_list_the_manifest_ids_are_forwarded();
     an_app_list_replaces_the_default_but_not_the_firmwares_set();
     a_malformed_list_changes_nothing();
+    can_filter_close(0);
+    each_device_gets_its_own_ids();
     if (failures) {
         printf("%d check(s) FAILED\n", failures);
         return 1;
