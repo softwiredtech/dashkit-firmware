@@ -7,7 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "nvs.h"
 
-static const char *TAG = "auto_high_beam";
+static const char *TAG = "touch_enable_auto_high_beam";
 
 #define NVS_NAMESPACE       "auto_high_beam"
 #define NVS_KEY_ENABLED     "en"
@@ -75,6 +75,7 @@ static void auto_high_beam_init(automation_t *self)
         }
         nvs_close(nvs);
     }
+    ESP_LOGI(TAG, "auto high beam ready (%s)", s_enabled ? "enabled" : "disabled");
 }
 
 static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t *frame)
@@ -114,25 +115,36 @@ static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t
     }
     portEXIT_CRITICAL(&s_lock);
 
-    if (!send || !s_lighting_msg || !can_msg_fresh(LIGHTING_MSG, CONTROL_MAX_AGE_MS) ||
+    if (!send) {
+        return;
+    }
+    if (!s_lighting_msg || !can_msg_fresh(LIGHTING_MSG, CONTROL_MAX_AGE_MS) ||
         !can_msg_fresh(BODY_CONTROL_MSG, CONTROL_MAX_AGE_MS)) {
+        ESP_LOGI(TAG, "hold detected, skipping: lighting or body controls unavailable");
         return;
     }
     can_frame_t control;
     if (can_frame_live(s_lighting_msg->default_bus, LIGHTING_MSG, &control) != ESP_OK ||
-        control.dlc != s_lighting_msg->dlc || control.extended ||
-        dbc_unpack(control.data, s_high_beam_state_sig) == HIGH_BEAM_DAS_AUTO) {
+        control.dlc != s_lighting_msg->dlc || control.extended) {
+        ESP_LOGI(TAG, "hold detected, skipping: invalid lighting frame");
+        return;
+    }
+    if (dbc_unpack(control.data, s_high_beam_state_sig) == HIGH_BEAM_DAS_AUTO) {
+        ESP_LOGI(TAG, "hold detected, skipping: already in DAS Auto");
         return;
     }
 
     uint8_t bus = s_body_control_msg->default_bus;
     if (can_frame_live(bus, BODY_CONTROL_MSG, &control) != ESP_OK ||
         control.dlc != s_body_control_msg->dlc || control.extended) {
+        ESP_LOGI(TAG, "hold detected, skipping: invalid body controls frame");
         return;
     }
 
     esp_err_t err;
+    const char *signal;
     if (dbc_unpack(control.data, s_override_sig) == 1) {
+        signal = "DAS_ahlbOverride";
         err = dbc_counter_seed_from_bus(bus, BODY_CONTROL_MSG);
         if (err == ESP_OK) {
             dbc_pack(control.data, s_override_sig, 0);
@@ -140,18 +152,23 @@ static void auto_high_beam_on_frame(automation_t *self, const can_tagged_frame_t
         }
     } else {
         if (!s_ui_control_msg || !can_msg_fresh(UI_CONTROL_MSG, CONTROL_MAX_AGE_MS)) {
+            ESP_LOGI(TAG, "hold detected, skipping: UI vehicle control unavailable");
             return;
         }
         bus = s_ui_control_msg->default_bus;
         if (can_frame_live(bus, UI_CONTROL_MSG, &control) != ESP_OK ||
             control.dlc != s_ui_control_msg->dlc || control.extended) {
+            ESP_LOGI(TAG, "hold detected, skipping: invalid UI vehicle control frame");
             return;
         }
+        signal = "UI_autoHighBeamEnabled";
         dbc_pack(control.data, s_ui_enable_sig, 0);
         err = can_frame_send(bus, UI_CONTROL_MSG, &control);
     }
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "send failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "hold detected, failed to clear %s: %s", signal, esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "hold detected, sent %s=0", signal);
     }
 }
 
@@ -174,6 +191,7 @@ static void auto_high_beam_on_config(automation_t *self, uint8_t opcode, uint16_
         return;
     }
 
+    ESP_LOGW(TAG, "automation %s", enabled ? "enabled" : "disabled");
     nvs_handle_t nvs;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
     if (err == ESP_OK) {
