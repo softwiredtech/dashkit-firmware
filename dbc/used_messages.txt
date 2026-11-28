@@ -39,9 +39,10 @@ EPBR_internalStatus   1 decode   # door unlatch: parked check while the drive in
 SCCM_steeringAngleSensor  0 filter  # app: steering angle
 DI_systemStatus           0 decode  # app: gear; mirror dip reads DI_gear
 DI_speed                  0 decode  # app: speed; door unlatch: DI_vehicleSpeed gate
-DAS_status                0 filter  # app: blind spot / speed limit / lane+collision warn
-DAS_status2               0 decode  # app: ADAS state; wiper-off gate reads DAS_lssState
+DAS_status                0 decode  # app: blind spot / speed limit / lane+collision warn; wiper-off gate reads DAS_autopilotState
+DAS_status2               0 filter  # app: ADAS state
 DAS_road                  0 filter  # app: traffic light color / stop line dist
+DAS_control               0 decode  # wiper-off gate reads DAS_accState (TACC engaged, incl. openpilot)
 
 # ---- App-forwarded messages on the vehicle bus (bus 1) ----
 VCLEFT_lightStatus        1 decode  # app: left turn signal; signal off in Park: left lamp
