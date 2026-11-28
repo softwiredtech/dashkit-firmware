@@ -7,7 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "nvs.h"
 
-static const char *TAG = "auto_high_beam";
+static const char *TAG = "touch_enable_auto_high_beam";
 
 #define NVS_NAMESPACE       "auto_high_beam"
 #define NVS_KEY_ENABLED     "en"
